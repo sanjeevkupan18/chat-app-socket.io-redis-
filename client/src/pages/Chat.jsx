@@ -283,6 +283,7 @@ import { useSocket } from "../context/SocketContext";
 import Sidebar from "../components/layout/Sidebar";
 
 import ChatWindow from "../components/chat/ChatWindow";
+import Seo from "../components/Seo";
 
 const Chat = () => {
   const { user } = useAuth();
@@ -777,6 +778,12 @@ const Chat = () => {
 
   return (
     <div className="relative h-screen overflow-hidden bg-slate-950">
+      <Seo
+        title="Messages"
+        description="ChatApp keeps your conversations fast, private, and in sync across devices."
+        path="/"
+      />
+
       {/* ========================================================
           MOBILE MENU
       ======================================================== */}

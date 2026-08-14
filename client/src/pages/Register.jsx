@@ -5,6 +5,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { User, Mail, Lock, Eye, EyeOff, MessageCircle } from "lucide-react";
 
 import { useAuth } from "../context/AuthContext";
+import Seo from "../components/Seo";
 
 const Register = () => {
   const navigate = useNavigate();
@@ -64,6 +65,12 @@ const Register = () => {
 
   return (
     <div className="min-h-screen bg-slate-950 flex items-center justify-center px-4 py-8">
+      <Seo
+        title="Create account"
+        description="Create your ChatApp account to start secure real-time conversations."
+        path="/register"
+      />
+
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <div className="mx-auto mb-4 w-14 h-14 rounded-2xl bg-blue-600 flex items-center justify-center">

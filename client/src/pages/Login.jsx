@@ -5,6 +5,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { MessageCircle, Eye, EyeOff, Lock, Mail } from "lucide-react";
 
 import { useAuth } from "../context/AuthContext";
+import Seo from "../components/Seo";
 
 const Login = () => {
   const navigate = useNavigate();
@@ -55,6 +56,12 @@ const Login = () => {
 
   return (
     <div className="min-h-screen bg-slate-950 flex items-center justify-center px-4">
+      <Seo
+        title="Sign in"
+        description="Sign in to ChatApp and continue your real-time conversations."
+        path="/login"
+      />
+
       <div className="w-full max-w-md">
         {/* Logo */}
 
