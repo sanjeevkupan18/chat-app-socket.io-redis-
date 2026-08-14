@@ -23,6 +23,7 @@ This repo is split into two apps:
 - Start command: `npm start`
 - Environment variables:
   - `MONGO_URI`
+  - `MONGO_URI_LOCAL` if you want a local fallback during development
   - `JWT_SECRET`
   - `REDIS_URL`
   - `CLIENT_URL=https://your-frontend.vercel.app`
