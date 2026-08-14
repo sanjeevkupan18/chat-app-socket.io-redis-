@@ -146,6 +146,187 @@
 //   return await redisClient.sMembers(ONLINE_USERS_KEY);
 // };
 
+// import redisClient from "../config/redis.js";
+
+// /*
+//  * ============================================================
+//  * REDIS KEY HELPERS
+//  * ============================================================
+//  */
+
+// /*
+//  * Redis Set containing all socket IDs
+//  * belonging to a particular user.
+//  *
+//  * Example:
+//  *
+//  * user:64abc123:sockets
+//  *
+//  *    socketA
+//  *    socketB
+//  *    socketC
+//  */
+
+// const getUserSocketKey = (userId) => {
+//   return `user:${userId}:sockets`;
+// };
+
+// /*
+//  * Redis Set containing all currently
+//  * online users.
+//  *
+//  * Example:
+//  *
+//  * online:users
+//  *
+//  *    userA
+//  *    userB
+//  *    userC
+//  */
+
+// const ONLINE_USERS_KEY = "online:users";
+
+// /*
+//  * ============================================================
+//  * ADD SOCKET
+//  * ============================================================
+//  */
+
+// export const addUserSocket = async (userId, socketId) => {
+//   const socketKey = getUserSocketKey(userId);
+
+//   /*
+//    * Get existing socket count
+//    * BEFORE adding the new socket.
+//    */
+
+//   const existingSocketCount = await redisClient.sCard(socketKey);
+
+//   /*
+//    * Add socket ID to user's Redis Set.
+//    *
+//    * Redis Set automatically prevents
+//    * duplicate socket IDs.
+//    */
+
+//   await redisClient.sAdd(socketKey, socketId);
+
+//   /*
+//    * Add user to global online users Set.
+//    *
+//    * Example:
+//    *
+//    * online:users
+//    *      ├── userA
+//    *      ├── userB
+//    *      └── userC
+//    */
+
+//   await redisClient.sAdd(ONLINE_USERS_KEY, userId);
+
+//   /*
+//    * Get the latest socket count.
+//    */
+
+//   const socketCount = await redisClient.sCard(socketKey);
+
+//   return {
+//     existingSocketCount,
+//     socketCount,
+//   };
+// };
+
+// /*
+//  * ============================================================
+//  * REMOVE SOCKET
+//  * ============================================================
+//  */
+
+// export const removeUserSocket = async (userId, socketId) => {
+//   const socketKey = getUserSocketKey(userId);
+
+//   /*
+//    * Remove disconnected socket.
+//    */
+
+//   await redisClient.sRem(socketKey, socketId);
+
+//   /*
+//    * Check how many sockets
+//    * are still active.
+//    */
+
+//   const remainingSockets = await redisClient.sCard(socketKey);
+
+//   /*
+//    * If there are no sockets left,
+//    * the user is completely offline.
+//    */
+
+//   if (remainingSockets === 0) {
+//     /*
+//      * Delete empty socket Set.
+//      */
+
+//     await redisClient.del(socketKey);
+
+//     /*
+//      * Remove user from global
+//      * online users Set.
+//      */
+
+//     await redisClient.sRem(ONLINE_USERS_KEY, userId);
+//   }
+
+//   return remainingSockets;
+// };
+
+// /*
+//  * ============================================================
+//  * GET USER SOCKETS
+//  * ============================================================
+//  *
+//  * This function is important for
+//  * real-time message routing.
+//  *
+//  * Example:
+//  *
+//  * getUserSockets("user123")
+//  *
+//  * returns:
+//  *
+//  * [
+//  *   "socketABC",
+//  *   "socketXYZ"
+//  * ]
+//  */
+
+// export const getUserSockets = async (userId) => {
+//   const socketKey = getUserSocketKey(userId);
+
+//   return await redisClient.sMembers(socketKey);
+// };
+
+// /*
+//  * ============================================================
+//  * CHECK USER ONLINE
+//  * ============================================================
+//  */
+
+// export const isUserOnline = async (userId) => {
+//   return await redisClient.sIsMember(ONLINE_USERS_KEY, userId);
+// };
+
+// /*
+//  * ============================================================
+//  * GET ALL ONLINE USERS
+//  * ============================================================
+//  */
+
+// export const getOnlineUsers = async () => {
+//   return await redisClient.sMembers(ONLINE_USERS_KEY);
+// };
+
 import redisClient from "../config/redis.js";
 
 /*
@@ -200,7 +381,7 @@ export const addUserSocket = async (userId, socketId) => {
    * BEFORE adding the new socket.
    */
 
-  const existingSocketCount = await redisClient.sCard(socketKey);
+  const existingSocketCount = await redisClient.scard(socketKey);
 
   /*
    * Add socket ID to user's Redis Set.
@@ -209,7 +390,7 @@ export const addUserSocket = async (userId, socketId) => {
    * duplicate socket IDs.
    */
 
-  await redisClient.sAdd(socketKey, socketId);
+  await redisClient.sadd(socketKey, socketId);
 
   /*
    * Add user to global online users Set.
@@ -222,13 +403,13 @@ export const addUserSocket = async (userId, socketId) => {
    *      └── userC
    */
 
-  await redisClient.sAdd(ONLINE_USERS_KEY, userId);
+  await redisClient.sadd(ONLINE_USERS_KEY, userId);
 
   /*
    * Get the latest socket count.
    */
 
-  const socketCount = await redisClient.sCard(socketKey);
+  const socketCount = await redisClient.scard(socketKey);
 
   return {
     existingSocketCount,
@@ -249,14 +430,14 @@ export const removeUserSocket = async (userId, socketId) => {
    * Remove disconnected socket.
    */
 
-  await redisClient.sRem(socketKey, socketId);
+  await redisClient.srem(socketKey, socketId);
 
   /*
    * Check how many sockets
    * are still active.
    */
 
-  const remainingSockets = await redisClient.sCard(socketKey);
+  const remainingSockets = await redisClient.scard(socketKey);
 
   /*
    * If there are no sockets left,
@@ -275,7 +456,7 @@ export const removeUserSocket = async (userId, socketId) => {
      * online users Set.
      */
 
-    await redisClient.sRem(ONLINE_USERS_KEY, userId);
+    await redisClient.srem(ONLINE_USERS_KEY, userId);
   }
 
   return remainingSockets;
@@ -304,7 +485,7 @@ export const removeUserSocket = async (userId, socketId) => {
 export const getUserSockets = async (userId) => {
   const socketKey = getUserSocketKey(userId);
 
-  return await redisClient.sMembers(socketKey);
+  return await redisClient.smembers(socketKey);
 };
 
 /*
@@ -314,7 +495,7 @@ export const getUserSockets = async (userId) => {
  */
 
 export const isUserOnline = async (userId) => {
-  return await redisClient.sIsMember(ONLINE_USERS_KEY, userId);
+  return await redisClient.sismember(ONLINE_USERS_KEY, userId);
 };
 
 /*
@@ -324,5 +505,5 @@ export const isUserOnline = async (userId) => {
  */
 
 export const getOnlineUsers = async () => {
-  return await redisClient.sMembers(ONLINE_USERS_KEY);
+  return await redisClient.smembers(ONLINE_USERS_KEY);
 };

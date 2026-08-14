@@ -66,6 +66,11 @@ const startServer = async () => {
      * START SERVER
      */
 
+    httpServer.on("error", (error) => {
+      console.error("HTTP server error:", error.message);
+      process.exit(1);
+    });
+
     httpServer.listen(PORT, () => {
       console.log(`Server running on http://localhost:${PORT}`);
     });
