@@ -1,5 +1,23 @@
 import mongoose from "mongoose";
 
+const reactionSchema = new mongoose.Schema(
+  {
+    user: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
+    emoji: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+  },
+  {
+    timestamps: true,
+  },
+);
+
 const messageSchema = new mongoose.Schema(
   {
     conversation: {
@@ -18,20 +36,69 @@ const messageSchema = new mongoose.Schema(
     receiver: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
-      required: true,
+      required: false,
+      default: null,
     },
 
     text: {
       type: String,
-      required: true,
+      default: "",
       trim: true,
       maxlength: 5000,
     },
 
     messageType: {
       type: String,
-      enum: ["text", "image", "file"],
+      enum: ["text", "image", "video", "audio", "file", "system", "call"],
       default: "text",
+    },
+
+    callInfo: {
+      callId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Call",
+      },
+      callType: {
+        type: String,
+        enum: ["audio", "video"],
+        default: "audio",
+      },
+      status: {
+        type: String,
+        enum: ["completed", "missed", "rejected", "busy", "failed"],
+        default: "completed",
+      },
+      duration: {
+        type: Number,
+        default: 0,
+      },
+    },
+
+    mediaUrl: {
+      type: String,
+      default: "",
+    },
+
+    fileName: {
+      type: String,
+      default: "",
+    },
+
+    fileSize: {
+      type: Number,
+      default: 0,
+    },
+
+    audioDuration: {
+      type: Number,
+      default: 0,
+    },
+
+    status: {
+      type: String,
+      enum: ["sent", "delivered", "read"],
+      default: "sent",
+      index: true,
     },
 
     isRead: {
@@ -39,10 +106,56 @@ const messageSchema = new mongoose.Schema(
       default: false,
     },
 
+    readBy: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+      },
+    ],
+
+    starredBy: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+      },
+    ],
+
+    mentions: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+      },
+    ],
+
+    reactions: [reactionSchema],
+
+    deliveredAt: {
+      type: Date,
+      default: null,
+    },
+
+    readAt: {
+      type: Date,
+      default: null,
+    },
+
+    replyTo: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Message",
+      default: null,
+    },
+
     isDeleted: {
       type: Boolean,
       default: false,
     },
+
+    deletedFor: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+      },
+    ],
 
     editedAt: {
       type: Date,

@@ -279,22 +279,33 @@ import api from "../services/api";
 import { useAuth } from "../context/AuthContext";
 
 import { useSocket } from "../context/SocketContext";
-
+import AppRail from "../components/layout/AppRail";
 import Sidebar from "../components/layout/Sidebar";
-
+import CallsPanel from "../components/chat/CallsPanel";
 import ChatWindow from "../components/chat/ChatWindow";
+import ProfileModal from "../components/layout/ProfileModal";
 import Seo from "../components/Seo";
+
+const sortConversations = (list) => {
+  return [...list].sort((a, b) => {
+    if (a.isPinned && !b.isPinned) return -1;
+    if (!a.isPinned && b.isPinned) return 1;
+    return (
+      new Date(b.updatedAt || b.createdAt || 0) -
+      new Date(a.updatedAt || a.createdAt || 0)
+    );
+  });
+};
 
 const Chat = () => {
   const { user } = useAuth();
 
   const [conversations, setConversations] = useState([]);
-
   const [selectedConversation, setSelectedConversation] = useState(null);
-
   const [loading, setLoading] = useState(true);
-
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [activeNav, setActiveNav] = useState("chat");
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
 
   const { socket } = useSocket();
 
@@ -375,7 +386,7 @@ const Chat = () => {
 
       const isIncomingMessage =
         message &&
-        (message.receiver?._id === user._id || message.receiver === user._id);
+        (message.sender?._id !== user._id && message.sender !== user._id);
 
       /*
        * ========================================================
@@ -427,11 +438,11 @@ const Chat = () => {
          * to the top.
          */
 
-        return [
+        return sortConversations([
           updatedConversation,
 
           ...previous.filter((item) => item._id !== conversationId),
-        ];
+        ]);
       });
 
       /*
@@ -488,16 +499,11 @@ const Chat = () => {
     }
 
     const handleMessagesRead = ({ conversationId }) => {
-      if (selectedConversation?._id !== conversationId) {
-        return;
-      }
-
       setConversations((previous) =>
         previous.map((conversation) =>
           conversation._id === conversationId
             ? {
                 ...conversation,
-
                 unreadCount: 0,
               }
             : conversation,
@@ -511,7 +517,6 @@ const Chat = () => {
 
         return {
           ...current,
-
           unreadCount: 0,
         };
       });
@@ -732,12 +737,13 @@ const Chat = () => {
    */
 
   const handleSelectConversation = (conversation) => {
+    if (!conversation) return;
+
     setConversations((previous) =>
       previous.map((item) =>
         item._id === conversation._id
           ? {
               ...item,
-
               unreadCount: 0,
             }
           : item,
@@ -746,11 +752,73 @@ const Chat = () => {
 
     setSelectedConversation({
       ...conversation,
-
       unreadCount: 0,
     });
 
+    if (conversation._id) {
+      socket?.emit("markConversationRead", {
+        conversationId: conversation._id,
+      });
+      api.put(`/conversations/${conversation._id}/read`).catch(() => {});
+    }
+
     setSidebarOpen(false);
+  };
+
+  const handleTogglePinConversation = async (conversationId) => {
+    try {
+      const res = await api.put(`/conversations/${conversationId}/pin`);
+      const updated = res.data;
+      setConversations((prev) =>
+        sortConversations(
+          prev.map((c) =>
+            c._id === conversationId ? { ...c, isPinned: updated.isPinned } : c,
+          ),
+        ),
+      );
+      setSelectedConversation((curr) =>
+        curr?._id === conversationId ? { ...curr, isPinned: updated.isPinned } : curr,
+      );
+    } catch (err) {
+      console.error("Failed to toggle pin:", err);
+    }
+  };
+
+  const scrollToMessage = (messageId) => {
+    if (!messageId) return;
+    const el = document.getElementById(`msg-${messageId}`);
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      el.classList.add("ring-2", "ring-blue-500", "bg-blue-500/10");
+      setTimeout(() => {
+        el.classList.remove("ring-2", "ring-blue-500", "bg-blue-500/10");
+      }, 1500);
+    }
+  };
+
+  const handleGroupCreated = (newGroup) => {
+    setConversations((prev) =>
+      sortConversations([
+        newGroup,
+        ...prev.filter((c) => c._id !== newGroup._id),
+      ]),
+    );
+    setSelectedConversation(newGroup);
+    setSidebarOpen(false);
+  };
+
+  const handleGroupUpdated = (updatedGroup) => {
+    setConversations((prev) =>
+      prev.map((c) => (c._id === updatedGroup._id ? { ...c, ...updatedGroup } : c)),
+    );
+    setSelectedConversation((curr) =>
+      curr?._id === updatedGroup._id ? { ...curr, ...updatedGroup } : curr,
+    );
+  };
+
+  const handleLeaveGroup = (groupId) => {
+    setConversations((prev) => prev.filter((c) => c._id !== groupId));
+    setSelectedConversation((curr) => (curr?._id === groupId ? null : curr));
   };
 
   /*
@@ -761,10 +829,10 @@ const Chat = () => {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-950">
-        <div className="flex items-center gap-3 text-slate-400">
-          <div className="h-5 w-5 animate-spin rounded-full border-2 border-slate-700 border-t-blue-500" />
-          Loading chats...
+      <div className="flex min-h-screen items-center justify-center bg-[var(--bg-app)]">
+        <div className="flex items-center gap-3 text-[var(--text-secondary)] text-sm font-medium">
+          <div className="h-5 w-5 animate-spin rounded-full border-2 border-[var(--border-color)] border-t-[var(--accent-primary)]" />
+          Loading workspace...
         </div>
       </div>
     );
@@ -772,67 +840,83 @@ const Chat = () => {
 
   /*
    * ============================================================
-   * UI
+   * UI (Floating Modern Dashboard Layout Matching Reference)
    * ============================================================
    */
 
   return (
-    <div className="relative h-screen overflow-hidden bg-slate-950">
+    <div className="relative h-screen w-screen overflow-hidden bg-[var(--bg-app)] flex sm:p-2 md:p-3 transition-colors duration-200">
       <Seo
         title="Messages"
         description="ChatApp keeps your conversations fast, private, and in sync across devices."
         path="/"
       />
 
-      {/* ========================================================
-          MOBILE MENU
-      ======================================================== */}
+      {/* Main Workspace Frame (Rounded Floating Card with Soft Shadow) */}
+      <div className="flex-1 flex overflow-hidden rounded-none sm:rounded-[24px] md:rounded-[32px] border border-[var(--border-color)] bg-[var(--bg-card)] shadow-2xl relative">
+        {/* Column 1: Far-Left App Rail (Navbar) */}
+        <AppRail
+          onOpenProfile={() => setIsProfileModalOpen(true)}
+          activeNav={activeNav}
+          setActiveNav={setActiveNav}
+        />
 
-      <button
-        onClick={() => setSidebarOpen(!sidebarOpen)}
-        className="absolute left-3 top-3 z-[60] rounded-lg bg-slate-800 p-2 text-white md:hidden"
-      >
-        {sidebarOpen ? <X size={20} /> : <Menu size={20} />}
-      </button>
-
-      <div className="flex h-full">
-        {/* ======================================================
-            SIDEBAR
-        ====================================================== */}
-
+        {/* Column 2: Chat Sidebar / Calls Panel (Full width on mobile when no chat active, side-by-side on md+) */}
         <div
-          className={`absolute inset-y-0 left-0 z-50 w-[85%] max-w-sm transform transition-transform duration-300 md:relative md:z-auto md:block md:w-80 md:max-w-none md:translate-x-0 ${
-            sidebarOpen ? "translate-x-0" : "-translate-x-full"
-          }`}
+          className={`${
+            selectedConversation ? "hidden md:flex" : "flex w-full"
+          } md:w-72 lg:w-80 shrink-0 flex-col h-full border-r border-[var(--border-color)] relative z-10`}
         >
-          <Sidebar
-            conversations={conversations}
-            selectedConversation={selectedConversation}
-            onSelectConversation={handleSelectConversation}
-            onSelectUser={handleSelectUser}
-          />
+          {activeNav === "calls" || activeNav === "video" ? (
+            <CallsPanel
+              initialFilter={activeNav === "video" ? "video" : "all"}
+              onSelectUser={(u) => {
+                handleSelectUser(u);
+                setActiveNav("chat");
+              }}
+              onClose={() => setActiveNav("chat")}
+            />
+          ) : (
+            <Sidebar
+              conversations={conversations}
+              selectedConversation={selectedConversation}
+              onSelectConversation={(conv) => {
+                handleSelectConversation(conv);
+              }}
+              onSelectUser={(u) => {
+                handleSelectUser(u);
+              }}
+              onGroupCreated={handleGroupCreated}
+              onTogglePinConversation={handleTogglePinConversation}
+              onScrollToMessage={scrollToMessage}
+              onOpenProfile={() => setIsProfileModalOpen(true)}
+              activeNav={activeNav}
+              setActiveNav={setActiveNav}
+            />
+          )}
         </div>
 
-        {/* ======================================================
-            MOBILE OVERLAY
-        ====================================================== */}
-
-        {sidebarOpen && (
-          <div
-            onClick={() => setSidebarOpen(false)}
-            className="absolute inset-0 z-40 bg-black/60 md:hidden"
+        {/* Column 3 & 4: Active Chat Window & Shared Files */}
+        <div
+          className={`${
+            selectedConversation ? "flex w-full" : "hidden md:flex"
+          } flex-1 min-w-0 h-full flex-col relative z-0`}
+        >
+          <ChatWindow
+            key={selectedConversation?._id || "no-conversation"}
+            conversation={selectedConversation}
+            onGroupUpdated={handleGroupUpdated}
+            onLeaveGroup={handleLeaveGroup}
+            onBack={() => setSelectedConversation(null)}
           />
-        )}
-
-        {/* ======================================================
-            CHAT WINDOW
-        ====================================================== */}
-
-        <ChatWindow
-          key={selectedConversation?._id || "no-conversation"}
-          conversation={selectedConversation}
-        />
+        </div>
       </div>
+
+      <ProfileModal
+        key={`${user?._id || "user"}-${isProfileModalOpen ? "open" : "closed"}`}
+        open={isProfileModalOpen}
+        onClose={() => setIsProfileModalOpen(false)}
+      />
     </div>
   );
 };

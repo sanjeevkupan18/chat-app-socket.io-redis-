@@ -1,3 +1,10 @@
+const defaultOrigins = [
+  "http://localhost:5173",
+  "http://localhost:3000",
+  "http://127.0.0.1:5173",
+  "http://127.0.0.1:3000",
+];
+
 const parseOrigins = (value) =>
   value
     ? value
@@ -6,14 +13,11 @@ const parseOrigins = (value) =>
         .filter(Boolean)
     : [];
 
-export const getAllowedOrigins = () => parseOrigins(process.env.CLIENT_URL);
+export const getAllowedOrigins = () => {
+  const envOrigins = parseOrigins(process.env.CLIENT_URL);
+  return Array.from(new Set([...defaultOrigins, ...envOrigins]));
+};
 
 export const getCorsOrigin = () => {
-  const allowedOrigins = getAllowedOrigins();
-
-  if (allowedOrigins.length === 0) {
-    return true;
-  }
-
-  return allowedOrigins.length === 1 ? allowedOrigins[0] : allowedOrigins;
+  return getAllowedOrigins();
 };

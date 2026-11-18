@@ -1,5 +1,7 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 * {
   box-sizing: border-box;
 }
@@ -9,6 +11,183 @@ body,
 #root {
   width: 100%;
   height: 100%;
+}
+
+:root {
+  /* LIGHT MODE (Default matching reference design) */
+  --bg-app: #F4F6F9;
+  --bg-card: #FFFFFF;
+  --bg-sidebar: #FFFFFF;
+  --bg-subtle: #F8FAFC;
+  --border-color: #E2E8F0;
+  --border-subtle: #EEF2F6;
+  --text-primary: #0F172A;
+  --text-secondary: #475569;
+  --text-muted: #94A3B8;
+
+  --bubble-in-bg: #FFFFFF;
+  --bubble-in-border: #E2E8F0;
+  --bubble-in-text: #1E293B;
+
+  /* Default Mint Palette (as seen in reference UI) */
+  --accent-primary: #10B981;
+  --accent-hover: #059669;
+  --accent-light: #D1FAE5;
+  --accent-lightest: #ECFDF5;
+  --accent-text: #065F46;
+
+  --bubble-out-bg: #E6F7F2;
+  --bubble-out-border: #A7F3D0;
+  --bubble-out-text: #064E3B;
+  --bubble-out-subtext: #047857;
+}
+
+/* Color Palettes for Light Mode */
+[data-palette="mint"] {
+  --accent-primary: #10B981;
+  --accent-hover: #059669;
+  --accent-light: #D1FAE5;
+  --accent-lightest: #ECFDF5;
+  --accent-text: #065F46;
+  --bubble-out-bg: #E6F7F2;
+  --bubble-out-border: #A7F3D0;
+  --bubble-out-text: #064E3B;
+  --bubble-out-subtext: #047857;
+}
+
+[data-palette="lavender"] {
+  --accent-primary: #8B5CF6;
+  --accent-hover: #7C3AED;
+  --accent-light: #EDE9FE;
+  --accent-lightest: #F5F3FF;
+  --accent-text: #5B21B6;
+  --bubble-out-bg: #EDE9FE;
+  --bubble-out-border: #DDD6FE;
+  --bubble-out-text: #1E1B4B;
+  --bubble-out-subtext: #6D28D9;
+}
+
+[data-palette="ocean"] {
+  --accent-primary: #3B82F6;
+  --accent-hover: #2563EB;
+  --accent-light: #DBEAFE;
+  --accent-lightest: #EFF6FF;
+  --accent-text: #1E40AF;
+  --bubble-out-bg: #EFF6FF;
+  --bubble-out-border: #BFDBFE;
+  --bubble-out-text: #172554;
+  --bubble-out-subtext: #1D4ED8;
+}
+
+[data-palette="coral"] {
+  --accent-primary: #F43F5E;
+  --accent-hover: #E11D48;
+  --accent-light: #FFE4E6;
+  --accent-lightest: #FFF1F2;
+  --accent-text: #9F1239;
+  --bubble-out-bg: #FFF1F2;
+  --bubble-out-border: #FECDD3;
+  --bubble-out-text: #881337;
+  --bubble-out-subtext: #BE123C;
+}
+
+[data-palette="amber"] {
+  --accent-primary: #F59E0B;
+  --accent-hover: #D97706;
+  --accent-light: #FEF3C7;
+  --accent-lightest: #FFFBEB;
+  --accent-text: #92400E;
+  --bubble-out-bg: #FFFBEB;
+  --bubble-out-border: #FDE68A;
+  --bubble-out-text: #78350F;
+  --bubble-out-subtext: #B45309;
+}
+
+/* DARK MODE OVERRIDES */
+[data-theme="dark"],
+.dark {
+  --bg-app: #0B0F19;
+  --bg-card: #111827;
+  --bg-sidebar: #111827;
+  --bg-subtle: #1F2937;
+  --border-color: #1F2937;
+  --border-subtle: #1F2937;
+  --text-primary: #FFFFFF;
+  --text-secondary: #E2E8F0;
+  --text-muted: #94A3B8;
+
+  --accent-light: rgba(16, 185, 129, 0.22);
+  --accent-lightest: rgba(16, 185, 129, 0.12);
+  --accent-text: #34D399;
+
+  --bubble-in-bg: #1F2937;
+  --bubble-in-border: #374151;
+  --bubble-in-text: #F9FAFB;
+
+  --bubble-out-bg: #064E3B;
+  --bubble-out-border: #059669;
+  --bubble-out-text: #ECFDF5;
+  --bubble-out-subtext: #6EE7B7;
+}
+
+[data-theme="dark"][data-palette="mint"] {
+  --accent-primary: #10B981;
+  --accent-hover: #059669;
+  --accent-light: rgba(16, 185, 129, 0.22);
+  --accent-lightest: rgba(16, 185, 129, 0.12);
+  --accent-text: #34D399;
+  --bubble-out-bg: #064E3B;
+  --bubble-out-border: #059669;
+  --bubble-out-text: #ECFDF5;
+  --bubble-out-subtext: #6EE7B7;
+}
+
+[data-theme="dark"][data-palette="lavender"] {
+  --accent-primary: #8B5CF6;
+  --accent-hover: #7C3AED;
+  --accent-light: rgba(139, 92, 246, 0.25);
+  --accent-lightest: rgba(139, 92, 246, 0.15);
+  --accent-text: #C4B5FD;
+  --bubble-out-bg: #4C1D95;
+  --bubble-out-border: #6D28D9;
+  --bubble-out-text: #F5F3FF;
+  --bubble-out-subtext: #DDD6FE;
+}
+
+[data-theme="dark"][data-palette="ocean"] {
+  --accent-primary: #0EA5E9;
+  --accent-hover: #0284C7;
+  --accent-light: rgba(14, 165, 233, 0.25);
+  --accent-lightest: rgba(14, 165, 233, 0.15);
+  --accent-text: #7DD3FC;
+  --bubble-out-bg: #0369A1;
+  --bubble-out-border: #0EA5E9;
+  --bubble-out-text: #F0F9FF;
+  --bubble-out-subtext: #BAE6FD;
+}
+
+[data-theme="dark"][data-palette="coral"] {
+  --accent-primary: #F43F5E;
+  --accent-hover: #E11D48;
+  --accent-light: rgba(244, 63, 94, 0.25);
+  --accent-lightest: rgba(244, 63, 94, 0.15);
+  --accent-text: #FDA4AF;
+  --bubble-out-bg: #881337;
+  --bubble-out-border: #BE123C;
+  --bubble-out-text: #FFF1F2;
+  --bubble-out-subtext: #FECDD3;
+}
+
+[data-theme="dark"][data-palette="amber"] {
+  --accent-primary: #F59E0B;
+  --accent-hover: #D97706;
+  --accent-light: rgba(245, 158, 11, 0.25);
+  --accent-lightest: rgba(245, 158, 11, 0.15);
+  --accent-text: #FCD34D;
+  --bubble-out-bg: #78350F;
+  --bubble-out-border: #B45309;
+  --bubble-out-text: #FEF3C7;
+  --bubble-out-subtext: #FDE68A;
 }
 
 body {
@@ -21,8 +200,9 @@ body {
     BlinkMacSystemFont,
     "Segoe UI",
     sans-serif;
-
-  background: #020617;
+  background-color: var(--bg-app);
+  color: var(--text-primary);
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
 button,
@@ -36,8 +216,8 @@ button {
 }
 
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
 }
 
 ::-webkit-scrollbar-track {
@@ -45,10 +225,36 @@ button {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #334155;
+  background: rgba(148, 163, 184, 0.3);
   border-radius: 999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #475569;
+  background: rgba(148, 163, 184, 0.5);
+}
+
+@keyframes float-slow {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-12px) rotate(1.5deg);
+  }
+}
+
+@keyframes float-reverse {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  50% {
+    transform: translateY(14px) rotate(-1.5deg);
+  }
+}
+
+.animate-float-slow {
+  animation: float-slow 6s ease-in-out infinite;
+}
+
+.animate-float-reverse {
+  animation: float-reverse 8s ease-in-out infinite;
 }

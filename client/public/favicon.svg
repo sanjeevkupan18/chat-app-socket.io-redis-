@@ -1,10 +1,16 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
-  <rect width="64" height="64" rx="18" fill="#0F172A" />
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" fill="none">
+  <!-- High-contrast crisp squircle backdrop for browser tabs -->
+  <rect width="48" height="48" rx="13" fill="#0B132B" stroke="#1E293B" stroke-width="1.5" />
+
+  <!-- Top-Left Emerald Wing - direct solid color for guaranteed browser tab rendering -->
   <path
-    d="M18 18C18 14.6863 20.6863 12 24 12H40C43.3137 12 46 14.6863 46 18V31C46 34.3137 43.3137 37 40 37H29.5L20.5 44.5V37C18.0147 36.9865 16 34.9831 16 32.5V18Z"
-    fill="#2563EB"
+    d="M 10 10 L 26 10 C 27.65 10 28.5 11.95 27.4 13.2 L 20.6 22.8 C 19.8 23.9 18.2 24 17.2 23.2 L 9.2 14.8 C 8.2 13.7 8.8 10 10 10 Z"
+    fill="#10B981"
   />
-  <circle cx="26" cy="24" r="2.4" fill="#EFF6FF" />
-  <circle cx="32" cy="24" r="2.4" fill="#EFF6FF" />
-  <circle cx="38" cy="24" r="2.4" fill="#EFF6FF" />
+
+  <!-- Bottom-Right Coral Wing - direct solid color for guaranteed browser tab rendering -->
+  <path
+    d="M 38 38 L 22 38 C 20.35 38 19.5 36.05 20.6 34.8 L 27.4 25.2 C 28.2 24.1 29.8 24 30.8 24.8 L 38.8 33.2 C 39.8 34.3 39.2 38 38 38 Z"
+    fill="#F43F5E"
+  />
 </svg>

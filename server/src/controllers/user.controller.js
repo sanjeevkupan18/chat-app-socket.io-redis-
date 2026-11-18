@@ -7,41 +7,41 @@ const sanitizeUser = (user) => {
     email: user.email,
     avatar: user.avatar,
     isOnline: user.isOnline,
-    lastSeen: user.lastSeen,
+    lastSeen: user.hideLastSeen ? null : user.lastSeen,
+    hideLastSeen: Boolean(user.hideLastSeen),
   };
 };
 
 export const searchUsers = async (req, res) => {
   try {
-    const search = req.query.search?.trim();
+    const search = (req.query.search || req.query.query || "").trim();
 
-    if (!search) {
-      return res.json([]);
-    }
-
-    const users = await User.find({
+    const queryFilter = {
       _id: {
         $ne: req.user._id,
       },
+    };
 
-      $or: [
+    if (search) {
+      queryFilter.$or = [
         {
           name: {
             $regex: search,
             $options: "i",
           },
         },
-
         {
           email: {
             $regex: search,
             $options: "i",
           },
         },
-      ],
-    })
+      ];
+    }
+
+    const users = await User.find(queryFilter)
       .select("name email avatar isOnline lastSeen")
-      .limit(20);
+      .limit(30);
 
     res.json(users);
   } catch (error) {
@@ -67,7 +67,7 @@ export const getMyProfile = async (req, res) => {
 
 export const updateMyProfile = async (req, res) => {
   try {
-    const { name, avatar } = req.body;
+    const { name, avatar, hideLastSeen } = req.body;
 
     const updates = {};
 
@@ -85,6 +85,10 @@ export const updateMyProfile = async (req, res) => {
 
     if (typeof avatar === "string") {
       updates.avatar = avatar.trim();
+    }
+
+    if (typeof hideLastSeen === "boolean") {
+      updates.hideLastSeen = hideLastSeen;
     }
 
     if (Object.keys(updates).length === 0) {
