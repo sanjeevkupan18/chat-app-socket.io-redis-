@@ -53,8 +53,13 @@ export const createConversation = async (req, res) => {
     const participantKey = createParticipantKey(currentUserId, userId);
 
     let conversation = await Conversation.findOne({ participantKey })
-      .populate("participants", "name email avatar isOnline lastSeen hideLastSeen")
-      .populate("lastMessage");
+      .populate("participants", "name email avatar isOnline lastSeen hideLastSeen statusEmoji statusText about")
+      .populate("lastMessage")
+      .populate({
+        path: "pinnedMessages",
+        select: "text messageType mediaUrl fileName sender poll isForwarded createdAt",
+        populate: { path: "sender", select: "name avatar" },
+      });
 
     if (!conversation) {
       conversation = await Conversation.create({
@@ -65,7 +70,7 @@ export const createConversation = async (req, res) => {
 
       conversation = await conversation.populate(
         "participants",
-        "name email avatar isOnline lastSeen hideLastSeen",
+        "name email avatar isOnline lastSeen hideLastSeen statusEmoji statusText about",
       );
     }
 
@@ -81,11 +86,16 @@ export const getConversations = async (req, res) => {
     const conversations = await Conversation.find({
       participants: req.user._id,
     })
-      .populate("participants", "name email avatar isOnline lastSeen hideLastSeen")
+      .populate("participants", "name email avatar isOnline lastSeen hideLastSeen statusEmoji statusText about")
       .populate("groupAdmins", "name email avatar")
       .populate({
         path: "lastMessage",
         populate: { path: "sender", select: "name" },
+      })
+      .populate({
+        path: "pinnedMessages",
+        select: "text messageType mediaUrl fileName sender createdAt",
+        populate: { path: "sender", select: "name avatar" },
       })
       .sort({ updatedAt: -1 });
 
@@ -118,11 +128,16 @@ export const togglePinConversation = async (req, res) => {
       _id: id,
       participants: req.user._id,
     })
-      .populate("participants", "name email avatar isOnline lastSeen hideLastSeen")
+      .populate("participants", "name email avatar isOnline lastSeen hideLastSeen statusEmoji statusText about")
       .populate("groupAdmins", "name email avatar")
       .populate({
         path: "lastMessage",
         populate: { path: "sender", select: "name" },
+      })
+      .populate({
+        path: "pinnedMessages",
+        select: "text messageType mediaUrl fileName sender createdAt",
+        populate: { path: "sender", select: "name avatar" },
       });
 
     if (!conversation) {
@@ -187,7 +202,7 @@ export const createGroupConversation = async (req, res) => {
     group.lastMessage = systemMsg._id;
     await group.save();
 
-    await group.populate("participants", "name email avatar isOnline lastSeen hideLastSeen");
+    await group.populate("participants", "name email avatar isOnline lastSeen hideLastSeen statusEmoji statusText about");
     await group.populate("groupAdmins", "name email avatar");
     await group.populate("lastMessage");
 
@@ -235,7 +250,7 @@ export const updateGroup = async (req, res) => {
     }
 
     await group.save();
-    await group.populate("participants", "name email avatar isOnline lastSeen hideLastSeen");
+    await group.populate("participants", "name email avatar isOnline lastSeen hideLastSeen statusEmoji statusText about");
     await group.populate("groupAdmins", "name email avatar");
     await group.populate("lastMessage");
 
@@ -320,7 +335,7 @@ export const updateGroupMembers = async (req, res) => {
     group.lastMessage = systemMsg._id;
     await group.save();
 
-    await group.populate("participants", "name email avatar isOnline lastSeen hideLastSeen");
+    await group.populate("participants", "name email avatar isOnline lastSeen hideLastSeen statusEmoji statusText about");
     await group.populate("groupAdmins", "name email avatar");
     await group.populate("lastMessage");
 
@@ -375,7 +390,7 @@ export const updateGroupAdmins = async (req, res) => {
     }
 
     await group.save();
-    await group.populate("participants", "name email avatar isOnline lastSeen hideLastSeen");
+    await group.populate("participants", "name email avatar isOnline lastSeen hideLastSeen statusEmoji statusText about");
     await group.populate("groupAdmins", "name email avatar");
     await group.populate("lastMessage");
 
@@ -430,5 +445,194 @@ export const markConversationAsRead = async (req, res) => {
   } catch (err) {
     console.error("markConversationAsRead error:", err);
     res.status(500).json({ message: "Failed to mark conversation as read" });
+  }
+};
+
+/*
+ * PIN MESSAGE IN CONVERSATION
+ */
+export const pinMessage = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { messageId } = req.body;
+
+    const conversation = await Conversation.findOne({
+      _id: id,
+      participants: req.user._id,
+    });
+
+    if (!conversation) {
+      return res.status(404).json({ message: "Conversation not found" });
+    }
+
+    const message = await Message.findOne({
+      _id: messageId,
+      conversation: id,
+    });
+
+    if (!message) {
+      return res.status(404).json({ message: "Message not found in this conversation" });
+    }
+
+    if (!conversation.pinnedMessages) {
+      conversation.pinnedMessages = [];
+    }
+
+    const exists = conversation.pinnedMessages.some(
+      (mId) => (mId?._id || mId).toString() === messageId.toString(),
+    );
+    if (!exists) {
+      // Keep up to 3 pinned messages
+      if (conversation.pinnedMessages.length >= 3) {
+        conversation.pinnedMessages.shift();
+      }
+      conversation.pinnedMessages.push(message._id);
+      await conversation.save();
+    }
+
+    await conversation.populate({
+      path: "pinnedMessages",
+      select: "text messageType mediaUrl fileName sender poll isForwarded createdAt",
+      populate: { path: "sender", select: "name avatar" },
+    });
+
+    const updateData = {
+      conversationId: conversation._id.toString(),
+      pinnedMessages: conversation.pinnedMessages,
+    };
+
+    const io = req.app.get("io");
+    if (io) {
+      io.to(`conversation:${conversation._id}`).emit(
+        "conversationPinnedUpdated",
+        updateData,
+      );
+    }
+
+    res.json({
+      success: true,
+      conversationId: conversation._id,
+      pinnedMessages: conversation.pinnedMessages,
+    });
+  } catch (err) {
+    console.error("pinMessage error:", err);
+    res.status(500).json({ message: "Failed to pin message" });
+  }
+};
+
+/*
+ * UNPIN MESSAGE IN CONVERSATION
+ */
+export const unpinMessage = async (req, res) => {
+  try {
+    const { id, messageId } = req.params;
+
+    const conversation = await Conversation.findOne({
+      _id: id,
+      participants: req.user._id,
+    });
+
+    if (!conversation) {
+      return res.status(404).json({ message: "Conversation not found" });
+    }
+
+    conversation.pinnedMessages = (conversation.pinnedMessages || []).filter(
+      (mId) => (mId?._id || mId).toString() !== messageId.toString(),
+    );
+    await conversation.save();
+
+    await conversation.populate({
+      path: "pinnedMessages",
+      select: "text messageType mediaUrl fileName sender poll isForwarded createdAt",
+      populate: { path: "sender", select: "name avatar" },
+    });
+
+    const updateData = {
+      conversationId: conversation._id.toString(),
+      pinnedMessages: conversation.pinnedMessages,
+    };
+
+    const io = req.app.get("io");
+    if (io) {
+      io.to(`conversation:${conversation._id}`).emit(
+        "conversationPinnedUpdated",
+        updateData,
+      );
+    }
+
+    res.json({
+      success: true,
+      conversationId: conversation._id,
+      pinnedMessages: conversation.pinnedMessages,
+    });
+  } catch (err) {
+    console.error("unpinMessage error:", err);
+    res.status(500).json({ message: "Failed to unpin message" });
+  }
+};
+
+/*
+ * UPDATE DISAPPEARING MESSAGES
+ */
+export const updateDisappearingMessages = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { enabled, duration = 86400 } = req.body;
+
+    const conversation = await Conversation.findOne({
+      _id: id,
+      participants: req.user._id,
+    });
+
+    if (!conversation) {
+      return res.status(404).json({ message: "Conversation not found" });
+    }
+
+    conversation.disappearingMessages = {
+      enabled: Boolean(enabled),
+      duration: Number(duration) || 86400,
+    };
+
+    const durationLabel =
+      duration >= 7776000
+        ? "90 days"
+        : duration >= 604800
+        ? "7 days"
+        : "24 hours";
+
+    const systemText = enabled
+      ? `${req.user.name} turned on disappearing messages. New messages will disappear after ${durationLabel}.`
+      : `${req.user.name} turned off disappearing messages.`;
+
+    const systemMsg = await Message.create({
+      conversation: conversation._id,
+      sender: req.user._id,
+      text: systemText,
+      messageType: "system",
+      readBy: [req.user._id],
+    });
+
+    conversation.lastMessage = systemMsg._id;
+    await conversation.save();
+
+    const io = req.app.get("io");
+    if (io) {
+      const updateData = {
+        conversationId: conversation._id.toString(),
+        disappearingMessages: conversation.disappearingMessages,
+        systemMessage: systemMsg,
+      };
+      io.to(`conversation:${conversation._id}`).emit("disappearingMessagesUpdated", updateData);
+      io.to(`conversation:${conversation._id}`).emit("newMessage", systemMsg);
+    }
+
+    res.json({
+      success: true,
+      disappearingMessages: conversation.disappearingMessages,
+      systemMessage: systemMsg,
+    });
+  } catch (err) {
+    console.error("Update disappearing messages error:", err);
+    res.status(500).json({ message: "Failed to update disappearing messages" });
   }
 };

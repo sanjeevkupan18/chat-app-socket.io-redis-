@@ -1,13 +1,16 @@
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import crypto from "crypto";
 
 import config from "../config/config.js";
 import User from "../models/user.model.js";
+import { parseUserAgent, getClientIp } from "../utils/deviceParser.js";
 
-const generateToken = (userId) => {
+const generateToken = (userId, sessionId) => {
   return jwt.sign(
     {
       userId,
+      sessionId,
     },
     config.JWT_SECRET,
     {
@@ -24,6 +27,12 @@ const sanitizeUser = (user) => {
     avatar: user.avatar,
     isOnline: user.isOnline,
     lastSeen: user.lastSeen,
+    hideLastSeen: Boolean(user.hideLastSeen),
+    statusEmoji: user.statusEmoji || "",
+    statusText: user.statusText || "",
+    about: user.about || "Hey there! I am using Chat App.",
+    blockedUsers: (user.blockedUsers || []).map((id) => (id._id || id).toString()),
+    mutedConversations: user.mutedConversations || [],
   };
 };
 
@@ -57,15 +66,27 @@ export const registerUser = async (req, res) => {
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
+    const sessionId = crypto.randomUUID();
+    const { browser, os, device } = parseUserAgent(req.headers["user-agent"]);
+    const ip = getClientIp(req);
+
     const user = await User.create({
       name: name.trim(),
-
       email: normalizedEmail,
-
       password: hashedPassword,
+      sessions: [
+        {
+          sessionId,
+          device,
+          browser,
+          os,
+          ip,
+          lastActive: new Date(),
+        },
+      ],
     });
 
-    const token = generateToken(user._id);
+    const token = generateToken(user._id, sessionId);
 
     res.status(201).json({
       message: "Registration successful",
@@ -116,9 +137,24 @@ export const loginUser = async (req, res) => {
     user.isOnline = true;
     user.lastSeen = null;
 
+    const sessionId = crypto.randomUUID();
+    const { browser, os, device } = parseUserAgent(req.headers["user-agent"]);
+    const ip = getClientIp(req);
+
+    if (!user.sessions) user.sessions = [];
+    user.sessions.unshift({
+      sessionId,
+      device,
+      browser,
+      os,
+      ip,
+      lastActive: new Date(),
+    });
+    if (user.sessions.length > 10) user.sessions = user.sessions.slice(0, 10);
+
     await user.save();
 
-    const token = generateToken(user._id);
+    const token = generateToken(user._id, sessionId);
 
     res.json({
       message: "Login successful",

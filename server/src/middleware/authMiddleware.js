@@ -24,7 +24,19 @@ const protect = async (req, res, next) => {
       });
     }
 
+    if (
+      decoded.sessionId &&
+      user.sessions &&
+      user.sessions.length > 0 &&
+      !user.sessions.some((s) => s.sessionId === decoded.sessionId)
+    ) {
+      return res.status(401).json({
+        message: "This session has been logged out",
+      });
+    }
+
     req.user = user;
+    req.sessionId = decoded.sessionId || null;
 
     next();
   } catch (error) {
@@ -34,4 +46,5 @@ const protect = async (req, res, next) => {
   }
 };
 
+export { protect };
 export default protect;

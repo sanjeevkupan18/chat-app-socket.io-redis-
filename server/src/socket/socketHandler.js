@@ -12,10 +12,11 @@ import {
 import { setupCallHandlers, handleCallDisconnect } from "./callHandler.js";
 
 const POPULATE_MESSAGE_FIELDS = [
-  { path: "sender", select: "name email avatar" },
-  { path: "receiver", select: "name email avatar" },
+  { path: "sender", select: "name email avatar statusEmoji statusText" },
+  { path: "receiver", select: "name email avatar statusEmoji statusText" },
   { path: "reactions.user", select: "name avatar" },
   { path: "mentions", select: "name email avatar" },
+  { path: "poll.options.votes", select: "name avatar" },
   {
     path: "replyTo",
     select: "text messageType mediaUrl fileName sender isDeleted",
@@ -176,10 +177,13 @@ export const setupSocket = (io) => {
           audioDuration = 0,
           replyTo = null,
           mentions = [],
+          poll = null,
+          isForwarded = false,
         } = data;
 
         const trimmedText = (text || "").trim();
         const hasMedia = Boolean(mediaUrl && mediaUrl.trim());
+        const hasPoll = messageType === "poll" && poll && Array.isArray(poll.options);
 
         const conversation = await Conversation.findOne({
           _id: conversationId,
@@ -192,7 +196,7 @@ export const setupSocket = (io) => {
 
         const isGroup = Boolean(conversation.isGroup);
 
-        if (!conversationId || (!isGroup && !receiverId) || (!trimmedText && !hasMedia)) {
+        if (!conversationId || (!isGroup && !receiverId) || (!trimmedText && !hasMedia && !hasPoll)) {
           return socket.emit("socketError", { message: "Invalid message data" });
         }
 
@@ -203,6 +207,21 @@ export const setupSocket = (io) => {
           if (!receiverExists) {
             return socket.emit("socketError", {
               message: "Receiver is not part of this conversation",
+            });
+          }
+
+          // Check block status
+          const senderUser = await User.findById(userId).select("blockedUsers");
+          if (senderUser?.blockedUsers?.some((bId) => bId.toString() === receiverId)) {
+            return socket.emit("socketError", {
+              message: "You have blocked this contact. Unblock to send messages.",
+            });
+          }
+
+          const receiverUser = await User.findById(receiverId).select("blockedUsers");
+          if (receiverUser?.blockedUsers?.some((bId) => bId.toString() === userId)) {
+            return socket.emit("socketError", {
+              message: "Message could not be sent. You have been blocked by this user.",
             });
           }
         }
@@ -216,7 +235,7 @@ export const setupSocket = (io) => {
         }
 
         const now = new Date();
-        const allowedTypes = ["text", "image", "video", "audio", "file", "system"];
+        const allowedTypes = ["text", "image", "video", "audio", "file", "system", "poll"];
         const normalizedType = allowedTypes.includes(messageType) ? messageType : "text";
 
         let validReplyTo = null;
@@ -240,6 +259,13 @@ export const setupSocket = (io) => {
           );
         }
 
+        // Calculate disappearing message expiration
+        let expiresAt = null;
+        if (conversation.disappearingMessages?.enabled) {
+          const duration = conversation.disappearingMessages.duration || 86400;
+          expiresAt = new Date(Date.now() + duration * 1000);
+        }
+
         const message = await Message.create({
           conversation: conversationId,
           sender: userId,
@@ -252,10 +278,13 @@ export const setupSocket = (io) => {
           audioDuration: audioDuration || 0,
           replyTo: validReplyTo,
           mentions: validMentions,
+          poll: normalizedType === "poll" && hasPoll ? poll : undefined,
+          isForwarded: Boolean(isForwarded),
           status: isGroup ? "sent" : isDelivered ? "delivered" : "sent",
           deliveredAt: isDelivered ? now : null,
           isRead: false,
           readBy: [userId],
+          expiresAt,
         });
 
         await message.populate(POPULATE_MESSAGE_FIELDS);
@@ -353,6 +382,173 @@ export const setupSocket = (io) => {
         }
       } catch (error) {
         console.error("Message reaction error:", error);
+      }
+    });
+
+    /*
+     * VOTE IN POLL
+     */
+    socket.on("votePoll", async ({ conversationId, messageId, optionId }) => {
+      try {
+        if (!conversationId || !messageId || !optionId) return;
+
+        const conversation = await Conversation.findOne({
+          _id: conversationId,
+          participants: userId,
+        });
+        if (!conversation) return;
+
+        const message = await Message.findOne({
+          _id: messageId,
+          conversation: conversationId,
+          messageType: "poll",
+        });
+
+        if (!message || !message.poll || !Array.isArray(message.poll.options)) {
+          return;
+        }
+
+        const targetOption = message.poll.options.find((opt) => opt.id === optionId);
+        if (!targetOption) return;
+
+        const alreadyVotedTarget = targetOption.votes.some(
+          (vId) => vId.toString() === userId,
+        );
+
+        if (alreadyVotedTarget) {
+          targetOption.votes = targetOption.votes.filter(
+            (vId) => vId.toString() !== userId,
+          );
+        } else {
+          if (!message.poll.allowMultipleAnswers) {
+            message.poll.options.forEach((opt) => {
+              opt.votes = opt.votes.filter((vId) => vId.toString() !== userId);
+            });
+          }
+          targetOption.votes.push(userId);
+        }
+
+        await message.save();
+        await message.populate("poll.options.votes", "name avatar");
+
+        const pollData = {
+          conversationId,
+          messageId,
+          poll: message.poll,
+        };
+
+        io.to(`conversation:${conversationId}`).emit("pollUpdated", pollData);
+
+        for (const pId of conversation.participants) {
+          const pSockets = await getUserSockets(pId.toString());
+          pSockets.forEach((sId) => {
+            io.to(sId).emit("pollUpdated", pollData);
+          });
+        }
+      } catch (error) {
+        console.error("Vote poll error:", error);
+      }
+    });
+
+    /*
+     * PIN MESSAGE
+     */
+    socket.on("pinMessage", async ({ conversationId, messageId }) => {
+      try {
+        if (!conversationId || !messageId) return;
+
+        const conversation = await Conversation.findOne({
+          _id: conversationId,
+          participants: userId,
+        });
+        if (!conversation) return;
+
+        const message = await Message.findOne({
+          _id: messageId,
+          conversation: conversationId,
+        });
+        if (!message) return;
+
+        if (!conversation.pinnedMessages) {
+          conversation.pinnedMessages = [];
+        }
+
+        const exists = conversation.pinnedMessages.some(
+          (mId) => (mId?._id || mId).toString() === messageId.toString(),
+        );
+        if (!exists) {
+          if (conversation.pinnedMessages.length >= 3) {
+            conversation.pinnedMessages.shift();
+          }
+          conversation.pinnedMessages.push(message._id);
+          await conversation.save();
+        }
+
+        await conversation.populate({
+          path: "pinnedMessages",
+          select: "text messageType mediaUrl fileName sender poll isForwarded createdAt",
+          populate: { path: "sender", select: "name avatar" },
+        });
+
+        const updateData = {
+          conversationId: conversationId.toString(),
+          pinnedMessages: conversation.pinnedMessages,
+        };
+
+        socket.emit("conversationPinnedUpdated", updateData);
+        io.to(`conversation:${conversationId}`).emit("conversationPinnedUpdated", updateData);
+
+        for (const pId of conversation.participants) {
+          const pSockets = await getUserSockets(pId.toString());
+          pSockets.forEach((sId) => {
+            io.to(sId).emit("conversationPinnedUpdated", updateData);
+          });
+        }
+      } catch (error) {
+        console.error("Pin message error:", error);
+      }
+    });
+
+    /*
+     * UNPIN MESSAGE
+     */
+    socket.on("unpinMessage", async ({ conversationId, messageId }) => {
+      try {
+        if (!conversationId || !messageId) return;
+
+        const conversation = await Conversation.findOne({
+          _id: conversationId,
+          participants: userId,
+        });
+        if (!conversation) return;
+
+        conversation.pinnedMessages = (conversation.pinnedMessages || []).filter(
+          (mId) => (mId?._id || mId).toString() !== messageId.toString(),
+        );
+        await conversation.save();
+
+        await conversation.populate({
+          path: "pinnedMessages",
+          select: "text messageType mediaUrl fileName sender poll isForwarded createdAt",
+          populate: { path: "sender", select: "name avatar" },
+        });
+
+        const updateData = {
+          conversationId: conversationId.toString(),
+          pinnedMessages: conversation.pinnedMessages,
+        };
+
+        socket.emit("conversationPinnedUpdated", updateData);
+        io.to(`conversation:${conversationId}`).emit("conversationPinnedUpdated", updateData);
+
+        for (const pId of conversation.participants) {
+          const pSockets = await getUserSockets(pId.toString());
+          pSockets.forEach((sId) => {
+            io.to(sId).emit("conversationPinnedUpdated", updateData);
+          });
+        }
+      } catch (error) {
+        console.error("Unpin message error:", error);
       }
     });
 
@@ -559,7 +755,10 @@ export const setupSocket = (io) => {
           if (ids.length > 0) {
             await Message.updateMany(
               { _id: { $in: ids } },
-              { $addToSet: { readBy: userId } },
+              {
+                $addToSet: { readBy: userId },
+                $push: { readReceipts: { user: userId, readAt } },
+              },
             );
           }
 

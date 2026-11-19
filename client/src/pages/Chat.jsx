@@ -284,6 +284,7 @@ import Sidebar from "../components/layout/Sidebar";
 import CallsPanel from "../components/chat/CallsPanel";
 import ChatWindow from "../components/chat/ChatWindow";
 import ProfileModal from "../components/layout/ProfileModal";
+import CommandPaletteModal from "../components/common/CommandPaletteModal";
 import Seo from "../components/Seo";
 
 const sortConversations = (list) => {
@@ -306,8 +307,21 @@ const Chat = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [activeNav, setActiveNav] = useState("chat");
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
 
   const { socket } = useSocket();
+
+  // Cmd+K / Ctrl+K Global Shortcut
+  useEffect(() => {
+    const handleGlobalKeyDown = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setIsCommandPaletteOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener("keydown", handleGlobalKeyDown);
+    return () => window.removeEventListener("keydown", handleGlobalKeyDown);
+  }, []);
 
   /*
    * ============================================================
@@ -479,11 +493,75 @@ const Chat = () => {
     socket.on("conversationUpdated", handleConversationUpdate);
 
     /*
+     * Listen for Pinned Messages updates
+     */
+    const handlePinnedUpdated = ({ conversationId, pinnedMessages: updatedPinned }) => {
+      setConversations((prev) =>
+        prev.map((c) =>
+          c._id?.toString() === conversationId?.toString()
+            ? { ...c, pinnedMessages: updatedPinned }
+            : c,
+        ),
+      );
+
+      setSelectedConversation((current) => {
+        if (!current || current._id?.toString() !== conversationId?.toString()) {
+          return current;
+        }
+        return {
+          ...current,
+          pinnedMessages: updatedPinned,
+        };
+      });
+    };
+
+    socket.on("conversationPinnedUpdated", handlePinnedUpdated);
+
+    /*
+     * Listen for real-time user profile/status updates
+     */
+    const handleUserProfileUpdated = (updatedUser) => {
+      if (!updatedUser?._id) return;
+      setConversations((prev) =>
+        prev.map((c) => {
+          const isParticipant = (c.participants || []).some(
+            (p) => (p._id || p)?.toString() === updatedUser._id.toString(),
+          );
+          if (!isParticipant) return c;
+          return {
+            ...c,
+            participants: (c.participants || []).map((p) =>
+              (p._id || p)?.toString() === updatedUser._id.toString()
+                ? { ...p, ...updatedUser }
+                : p,
+            ),
+          };
+        }),
+      );
+
+      setSelectedConversation((current) => {
+        if (!current) return current;
+        return {
+          ...current,
+          participants: (current.participants || []).map((p) =>
+            (p._id || p)?.toString() === updatedUser._id.toString()
+              ? { ...p, ...updatedUser }
+              : p,
+          ),
+        };
+      });
+    };
+
+    socket.on("userProfileUpdated", handleUserProfileUpdated);
+
+    /*
      * Cleanup.
      */
 
     return () => {
       socket.off("conversationUpdated", handleConversationUpdate);
+      socket.off("conversationPinnedUpdated", handlePinnedUpdated);
+      socket.off("userProfileUpdated", handleUserProfileUpdated);
     };
   }, [socket, selectedConversation?._id, user?._id]);
 
@@ -890,6 +968,7 @@ const Chat = () => {
               onTogglePinConversation={handleTogglePinConversation}
               onScrollToMessage={scrollToMessage}
               onOpenProfile={() => setIsProfileModalOpen(true)}
+              onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
               activeNav={activeNav}
               setActiveNav={setActiveNav}
             />
@@ -905,6 +984,7 @@ const Chat = () => {
           <ChatWindow
             key={selectedConversation?._id || "no-conversation"}
             conversation={selectedConversation}
+            conversations={conversations}
             onGroupUpdated={handleGroupUpdated}
             onLeaveGroup={handleLeaveGroup}
             onBack={() => setSelectedConversation(null)}
@@ -916,6 +996,20 @@ const Chat = () => {
         key={`${user?._id || "user"}-${isProfileModalOpen ? "open" : "closed"}`}
         open={isProfileModalOpen}
         onClose={() => setIsProfileModalOpen(false)}
+      />
+
+      {/* Global Cmd+K / Ctrl+K Command Palette */}
+      <CommandPaletteModal
+        open={isCommandPaletteOpen}
+        onClose={() => setIsCommandPaletteOpen(false)}
+        conversations={conversations}
+        onSelectConversation={handleSelectConversation}
+        onOpenProfile={() => setIsProfileModalOpen(true)}
+        onOpenCreateGroup={() => {
+          // Open sidebar and trigger create group
+          setActiveNav("chat");
+        }}
+        selectedConversation={selectedConversation}
       />
     </div>
   );

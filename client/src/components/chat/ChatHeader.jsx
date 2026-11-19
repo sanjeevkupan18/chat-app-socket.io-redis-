@@ -11,12 +11,19 @@ import {
   FolderArchive,
   ChevronLeft,
   MoreVertical,
+  Timer,
+  Bell,
+  BellOff,
+  Ban,
+  ShieldAlert,
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { useSocket } from "../../context/SocketContext";
 import { useCall } from "../../context/CallContext";
 import GroupInfoModal from "./GroupInfoModal";
 import StarredMessagesModal from "./StarredMessagesModal";
+import DisappearingMessagesModal from "./DisappearingMessagesModal";
+import api from "../../services/api";
 import { isSoundEnabled, setSoundEnabled } from "../../utils/soundAndNotification";
 import { getMediaUrl } from "../../config/endpoints";
 
@@ -62,21 +69,22 @@ const ChatHeader = ({
   onScrollToMessage,
   onBack,
 }) => {
-  const { user } = useAuth();
+  const { user, updateProfile } = useAuth();
   const { socket } = useSocket();
   const { startCall } = useCall();
 
   const [typingName, setTypingName] = useState(null);
   const [isGroupInfoOpen, setIsGroupInfoOpen] = useState(false);
   const [isStarredOpen, setIsStarredOpen] = useState(false);
+  const [isDisappearingOpen, setIsDisappearingOpen] = useState(false);
   const [soundOn, setSoundOn] = useState(() => isSoundEnabled());
-  const [showMobileMoreMenu, setShowMobileMoreMenu] = useState(false);
-  const mobileMoreMenuRef = useRef(null);
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const moreMenuRef = useRef(null);
 
   useEffect(() => {
     const handleClickOutside = (e) => {
-      if (mobileMoreMenuRef.current && !mobileMoreMenuRef.current.contains(e.target)) {
-        setShowMobileMoreMenu(false);
+      if (moreMenuRef.current && !moreMenuRef.current.contains(e.target)) {
+        setShowMoreMenu(false);
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
@@ -124,6 +132,45 @@ const ChatHeader = ({
   if (!isGroup && !otherUser) {
     return null;
   }
+
+  const isMuted = Boolean(
+    user?.mutedConversations?.some(
+      (m) =>
+        (m.conversationId?._id || m.conversationId)?.toString() ===
+          conversation._id?.toString() &&
+        (!m.mutedUntil || new Date(m.mutedUntil) > new Date()),
+    ),
+  );
+
+  const isBlocked = Boolean(
+    !isGroup &&
+      otherUser &&
+      (user?.blockedUsers || []).includes(otherUser._id?.toString()),
+  );
+
+  const handleToggleMute = async () => {
+    try {
+      const res = await api.put(`/users/conversations/${conversation._id}/mute`);
+      updateProfile({ mutedConversations: res.data.mutedConversations });
+    } catch (err) {
+      console.error("Toggle mute error:", err);
+    }
+  };
+
+  const handleToggleBlock = async () => {
+    if (!otherUser?._id) return;
+    try {
+      if (isBlocked) {
+        const res = await api.delete(`/users/${otherUser._id}/block`);
+        updateProfile({ blockedUsers: res.data.blockedUsers });
+      } else {
+        const res = await api.post(`/users/${otherUser._id}/block`);
+        updateProfile({ blockedUsers: res.data.blockedUsers });
+      }
+    } catch (err) {
+      console.error("Toggle block error:", err);
+    }
+  };
 
   const toggleSound = () => {
     const next = !soundOn;
@@ -202,9 +249,56 @@ const ChatHeader = ({
             </div>
 
             <div className="min-w-0">
-              <h2 className="truncate text-xs sm:text-sm font-bold text-[var(--text-primary)] group-hover:text-[var(--accent-primary)] transition">
-                {isGroup ? conversation.groupName : otherUser?.name}
-              </h2>
+              <div className="flex items-center gap-1.5 min-w-0">
+                <h2 className="truncate text-xs sm:text-sm font-bold text-[var(--text-primary)] group-hover:text-[var(--accent-primary)] transition">
+                  {isGroup ? conversation.groupName : otherUser?.name}
+                </h2>
+                {!isGroup && otherUser?.statusEmoji && (
+                  <span
+                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] bg-[var(--bg-subtle)] border border-[var(--border-color)] text-[var(--text-secondary)] shrink-0 font-normal shadow-2xs"
+                    title={otherUser.statusText || otherUser.statusEmoji}
+                  >
+                    <span>{otherUser.statusEmoji}</span>
+                    {otherUser.statusText && (
+                      <span className="max-w-[120px] truncate hidden sm:inline text-[9px] font-medium text-[var(--text-muted)]">
+                        {otherUser.statusText}
+                      </span>
+                    )}
+                  </span>
+                )}
+
+                {/* Disappearing Messages Indicator Badge */}
+                {conversation.disappearingMessages?.enabled && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setIsDisappearingOpen(true);
+                    }}
+                    className="inline-flex items-center gap-1 rounded-full bg-purple-500/15 border border-purple-500/30 px-1.5 py-0.5 text-[10px] font-bold text-purple-600 dark:text-purple-400 hover:scale-105 transition shrink-0"
+                    title="Disappearing messages enabled - click to change"
+                  >
+                    <Timer size={10} />
+                    <span>
+                      {conversation.disappearingMessages.duration >= 7776000
+                        ? "90d"
+                        : conversation.disappearingMessages.duration >= 604800
+                        ? "7d"
+                        : "24h"}
+                    </span>
+                  </button>
+                )}
+
+                {/* Mute Indicator Badge */}
+                {isMuted && (
+                  <span
+                    className="inline-flex items-center justify-center h-4 w-4 rounded-full bg-red-500/15 text-red-500 shrink-0"
+                    title="Notifications muted for this chat"
+                  >
+                    <BellOff size={10} />
+                  </span>
+                )}
+              </div>
               <p
                 className={`truncate text-[10px] sm:text-[11px] ${
                   typingName || (!isGroup && otherUser?.isOnline)
@@ -284,6 +378,20 @@ const ChatHeader = ({
             <Video size={17} />
           </button>
 
+          {/* Quick Mute Toggle */}
+          <button
+            type="button"
+            onClick={handleToggleMute}
+            className={`flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-xl transition ${
+              isMuted
+                ? "text-red-500 bg-red-500/10 hover:bg-red-500/20"
+                : "text-[var(--text-muted)] hover:bg-[var(--bg-subtle)] hover:text-[var(--text-primary)]"
+            }`}
+            title={isMuted ? "Unmute chat notifications" : "Mute chat notifications"}
+          >
+            {isMuted ? <BellOff size={17} /> : <Bell size={17} />}
+          </button>
+
           {/* Search: visible on sm+ screens */}
           <button
             type="button"
@@ -302,16 +410,6 @@ const ChatHeader = ({
             title="Starred messages"
           >
             <Star size={17} />
-          </button>
-
-          {/* Sound Toggle: visible on md+ screens */}
-          <button
-            type="button"
-            onClick={toggleSound}
-            className="hidden md:flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-xl text-[var(--text-muted)] transition hover:bg-[var(--bg-subtle)] hover:text-[var(--text-primary)]"
-            title={soundOn ? "Mute sounds" : "Unmute sounds"}
-          >
-            {soundOn ? <Volume2 size={17} /> : <VolumeX size={17} className="text-red-400" />}
           </button>
 
           {/* Shared Files Toggle: visible on sm+ screens */}
@@ -340,26 +438,90 @@ const ChatHeader = ({
             </button>
           )}
 
-          {/* Mobile / Tablet Overflow More Menu */}
-          <div className="relative md:hidden" ref={mobileMoreMenuRef}>
+          {/* Overflow More Menu (Both Desktop & Mobile) */}
+          <div className="relative" ref={moreMenuRef}>
             <button
               type="button"
-              onClick={() => setShowMobileMoreMenu((prev) => !prev)}
-              className="flex h-8 w-8 items-center justify-center rounded-xl text-[var(--text-muted)] hover:bg-[var(--bg-subtle)] hover:text-[var(--text-primary)] transition"
+              onClick={() => setShowMoreMenu((prev) => !prev)}
+              className="flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-xl text-[var(--text-muted)] hover:bg-[var(--bg-subtle)] hover:text-[var(--text-primary)] transition"
               title="More options"
             >
               <MoreVertical size={17} />
             </button>
 
-            {showMobileMoreMenu && (
-              <div className="absolute right-0 top-full mt-1.5 z-50 w-48 rounded-2xl border border-[var(--border-color)] bg-[var(--bg-card)]/95 backdrop-blur-md p-1.5 shadow-2xl animate-in fade-in zoom-in-95 duration-100">
+            {showMoreMenu && (
+              <div className="absolute right-0 top-full mt-1.5 z-50 w-52 rounded-2xl border border-[var(--border-color)] bg-[var(--bg-card)]/95 backdrop-blur-md p-1.5 shadow-2xl animate-in fade-in zoom-in-95 duration-100">
+                {/* Disappearing Messages Trigger */}
                 <button
                   type="button"
                   onClick={() => {
-                    setShowMobileMoreMenu(false);
+                    setShowMoreMenu(false);
+                    setIsDisappearingOpen(true);
+                  }}
+                  className="flex w-full items-center justify-between rounded-xl px-2.5 py-2 text-xs font-medium text-[var(--text-primary)] hover:bg-[var(--bg-subtle)] transition"
+                >
+                  <div className="flex items-center gap-2.5">
+                    <Timer size={15} className="text-purple-500" />
+                    <span>Disappearing Messages</span>
+                  </div>
+                  <span className="text-[10px] text-[var(--text-muted)]">
+                    {conversation.disappearingMessages?.enabled
+                      ? conversation.disappearingMessages.duration >= 7776000
+                        ? "90d"
+                        : conversation.disappearingMessages.duration >= 604800
+                        ? "7d"
+                        : "24h"
+                      : "Off"}
+                  </span>
+                </button>
+
+                {/* Mute Notifications */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleToggleMute();
+                    setShowMoreMenu(false);
+                  }}
+                  className="flex w-full items-center justify-between rounded-xl px-2.5 py-2 text-xs font-medium text-[var(--text-primary)] hover:bg-[var(--bg-subtle)] transition"
+                >
+                  <div className="flex items-center gap-2.5">
+                    {isMuted ? (
+                      <BellOff size={15} className="text-red-500" />
+                    ) : (
+                      <Bell size={15} className="text-slate-400" />
+                    )}
+                    <span>{isMuted ? "Unmute Chat" : "Mute Notifications"}</span>
+                  </div>
+                </button>
+
+                {/* Block / Unblock User (1-on-1 only) */}
+                {!isGroup && otherUser && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleToggleBlock();
+                      setShowMoreMenu(false);
+                    }}
+                    className={`flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-xs font-medium transition ${
+                      isBlocked
+                        ? "text-emerald-500 hover:bg-emerald-500/10"
+                        : "text-red-500 hover:bg-red-500/10"
+                    }`}
+                  >
+                    <Ban size={15} />
+                    <span>{isBlocked ? "Unblock Contact" : "Block Contact"}</span>
+                  </button>
+                )}
+
+                <div className="my-1 border-t border-[var(--border-color)]/30" />
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowMoreMenu(false);
                     onToggleInChatSearch();
                   }}
-                  className="flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-xs font-medium text-[var(--text-primary)] hover:bg-[var(--bg-subtle)] transition"
+                  className="sm:hidden flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-xs font-medium text-[var(--text-primary)] hover:bg-[var(--bg-subtle)] transition"
                 >
                   <Search size={15} />
                   <span>Search in chat</span>
@@ -368,7 +530,7 @@ const ChatHeader = ({
                 <button
                   type="button"
                   onClick={() => {
-                    setShowMobileMoreMenu(false);
+                    setShowMoreMenu(false);
                     setIsStarredOpen(true);
                   }}
                   className="flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-xs font-medium text-[var(--text-primary)] hover:bg-[var(--bg-subtle)] transition"
@@ -380,7 +542,7 @@ const ChatHeader = ({
                 <button
                   type="button"
                   onClick={() => {
-                    setShowMobileMoreMenu(false);
+                    setShowMoreMenu(false);
                     onToggleSharedFiles?.();
                   }}
                   className="flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-xs font-medium text-[var(--text-primary)] hover:bg-[var(--bg-subtle)] transition"
@@ -389,27 +551,11 @@ const ChatHeader = ({
                   <span>Shared Files</span>
                 </button>
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    toggleSound();
-                  }}
-                  className="flex w-full items-center justify-between rounded-xl px-2.5 py-2 text-xs font-medium text-[var(--text-primary)] hover:bg-[var(--bg-subtle)] transition"
-                >
-                  <div className="flex items-center gap-2.5">
-                    {soundOn ? <Volume2 size={15} /> : <VolumeX size={15} className="text-red-400" />}
-                    <span>Chimes</span>
-                  </div>
-                  <span className="text-[10px] text-[var(--text-muted)]">
-                    {soundOn ? "On" : "Muted"}
-                  </span>
-                </button>
-
                 {isGroup && (
                   <button
                     type="button"
                     onClick={() => {
-                      setShowMobileMoreMenu(false);
+                      setShowMoreMenu(false);
                       setIsGroupInfoOpen(true);
                     }}
                     className="flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-xs font-medium text-[var(--text-primary)] hover:bg-[var(--bg-subtle)] transition"
@@ -423,6 +569,14 @@ const ChatHeader = ({
           </div>
         </div>
       </header>
+
+      {/* Disappearing Messages Modal */}
+      <DisappearingMessagesModal
+        open={isDisappearingOpen}
+        onClose={() => setIsDisappearingOpen(false)}
+        conversation={conversation}
+        onDisappearingUpdated={onGroupUpdated}
+      />
 
       {/* Group Info Modal */}
       {isGroup && (

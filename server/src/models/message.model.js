@@ -49,8 +49,44 @@ const messageSchema = new mongoose.Schema(
 
     messageType: {
       type: String,
-      enum: ["text", "image", "video", "audio", "file", "system", "call"],
+      enum: ["text", "image", "video", "audio", "file", "system", "call", "poll"],
       default: "text",
+    },
+
+    poll: {
+      question: {
+        type: String,
+        trim: true,
+        default: "",
+      },
+      options: [
+        {
+          id: {
+            type: String,
+            required: true,
+          },
+          text: {
+            type: String,
+            trim: true,
+            required: true,
+          },
+          votes: [
+            {
+              type: mongoose.Schema.Types.ObjectId,
+              ref: "User",
+            },
+          ],
+        },
+      ],
+      allowMultipleAnswers: {
+        type: Boolean,
+        default: false,
+      },
+    },
+
+    isForwarded: {
+      type: Boolean,
+      default: false,
     },
 
     callInfo: {
@@ -113,6 +149,19 @@ const messageSchema = new mongoose.Schema(
       },
     ],
 
+    readReceipts: [
+      {
+        user: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "User",
+        },
+        readAt: {
+          type: Date,
+          default: Date.now,
+        },
+      },
+    ],
+
     starredBy: [
       {
         type: mongoose.Schema.Types.ObjectId,
@@ -165,6 +214,12 @@ const messageSchema = new mongoose.Schema(
     deletedAt: {
       type: Date,
       default: null,
+    },
+
+    expiresAt: {
+      type: Date,
+      default: null,
+      index: { expireAfterSeconds: 0 },
     },
   },
   {

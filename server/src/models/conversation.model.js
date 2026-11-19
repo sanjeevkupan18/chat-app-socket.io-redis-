@@ -58,6 +58,24 @@ const conversationSchema = new mongoose.Schema(
         ref: "User",
       },
     ],
+
+    pinnedMessages: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Message",
+      },
+    ],
+
+    disappearingMessages: {
+      enabled: {
+        type: Boolean,
+        default: false,
+      },
+      duration: {
+        type: Number,
+        default: 86400,
+      },
+    },
   },
   {
     timestamps: true,

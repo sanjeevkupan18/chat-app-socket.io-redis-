@@ -13,11 +13,14 @@ import {
   Reply,
   PencilLine,
   AtSign,
+  BarChart2,
+  Ban,
 } from "lucide-react";
 import { useSocket } from "../../context/SocketContext";
 import { useAuth } from "../../context/AuthContext";
 import api from "../../services/api";
 import ConfirmDialog from "../common/ConfirmDialog";
+import CreatePollModal from "./CreatePollModal";
 
 const EMOJIS = [
   "😀", "😂", "😍", "😊", "😎", "😅", "😉", "😭",
@@ -33,7 +36,7 @@ const MessageInput = ({
   onCancelReply,
 }) => {
   const { socket } = useSocket();
-  const { user } = useAuth();
+  const { user, updateProfile } = useAuth();
 
   const [text, setText] = useState(() => editingMessage?.text || "");
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
@@ -56,6 +59,7 @@ const MessageInput = ({
   // Voice recording state
   const [isRecording, setIsRecording] = useState(false);
   const [recordingDuration, setRecordingDuration] = useState(0);
+  const [showCreatePoll, setShowCreatePoll] = useState(false);
 
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
@@ -106,8 +110,28 @@ const MessageInput = ({
   const getReceiver = () => {
     if (!user || !conversation) return null;
     return conversation.participants.find(
-      (participant) => participant._id !== user._id,
+      (participant) => (participant._id || participant)?.toString() !== user._id?.toString(),
     );
+  };
+
+  const otherUser = getReceiver();
+  const otherUserId = (otherUser?._id || otherUser)?.toString();
+  const isBlocked = Boolean(
+    !isGroup &&
+      otherUserId &&
+      (user?.blockedUsers || []).some(
+        (id) => (id._id || id)?.toString() === otherUserId,
+      ),
+  );
+
+  const handleUnblock = async () => {
+    if (!otherUserId) return;
+    try {
+      const res = await api.delete(`/users/${otherUserId}/block`);
+      updateProfile({ blockedUsers: res.data.blockedUsers });
+    } catch (err) {
+      console.error("Unblock user error:", err);
+    }
   };
 
   const stopTyping = () => {
@@ -289,8 +313,7 @@ const MessageInput = ({
   };
 
   // File / Media Upload
-  const handleFileChange = async (e) => {
-    const file = e.target.files?.[0];
+  const uploadAndSendFile = async (file) => {
     if (!file || !socket || !conversation) return;
     const receiver = getReceiver();
     if (!isGroup && !receiver) return;
@@ -330,6 +353,50 @@ const MessageInput = ({
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
+  };
+
+  const handleFileChange = (e) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      uploadAndSendFile(file);
+    }
+  };
+
+  // Clipboard Paste (Screenshots & Images)
+  const handlePaste = (e) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item.kind === "file") {
+        const file = item.getAsFile();
+        if (file) {
+          e.preventDefault();
+          uploadAndSendFile(file);
+          return;
+        }
+      }
+    }
+  };
+
+  // Group Poll Creation
+  const handleCreatePoll = ({ question, options, allowMultipleAnswers }) => {
+    if (!socket || !conversation) return;
+    const receiver = getReceiver();
+    if (!isGroup && !receiver) return;
+
+    socket.emit("sendMessage", {
+      conversationId: conversation._id,
+      receiverId: isGroup ? null : receiver?._id,
+      text: question,
+      messageType: "poll",
+      poll: {
+        question,
+        options,
+        allowMultipleAnswers,
+      },
+    });
   };
 
   const triggerFileInput = (acceptType) => {
@@ -558,8 +625,25 @@ const MessageInput = ({
         </div>
       )}
 
-      <div>
-        {isRecording ? (
+      {isBlocked ? (
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 backdrop-blur-md animate-in fade-in duration-150">
+          <div className="flex items-center gap-2.5 text-xs text-[var(--text-secondary)]">
+            <Ban size={16} className="text-red-500 shrink-0" />
+            <span>
+              You have blocked this contact. Unblock to send messages or start calls.
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={handleUnblock}
+            className="rounded-xl bg-red-500 hover:bg-red-600 px-3.5 py-1.5 text-xs font-semibold text-white shadow-xs transition cursor-pointer shrink-0"
+          >
+            Unblock Contact
+          </button>
+        </div>
+      ) : (
+        <div>
+          {isRecording ? (
           /* Voice Recording Mode */
           <div className="flex items-center justify-between rounded-full bg-[var(--bg-card)] px-4 py-2 border border-[var(--border-color)] shadow-md animate-in fade-in duration-200">
             <div className="flex items-center gap-3">
@@ -605,6 +689,7 @@ const MessageInput = ({
                 value={text}
                 onChange={handleChange}
                 onKeyDown={handleKeyDown}
+                onPaste={handlePaste}
                 rows={1}
                 placeholder={
                   isEditing
@@ -709,6 +794,20 @@ const MessageInput = ({
                       </div>
                       <span>Document</span>
                     </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowAttachmentMenu(false);
+                        setShowCreatePoll(true);
+                      }}
+                      className="flex w-full items-center gap-3 rounded-xl p-2 text-xs text-[var(--text-primary)] transition hover:bg-[var(--bg-subtle)]"
+                    >
+                      <div className="rounded-lg bg-emerald-500/10 p-1.5 text-emerald-500">
+                        <BarChart2 size={15} />
+                      </div>
+                      <span>Create Poll</span>
+                    </button>
                   </div>
                 )}
               </div>
@@ -739,6 +838,13 @@ const MessageInput = ({
           </div>
         )}
       </div>
+      )}
+
+      <CreatePollModal
+        isOpen={showCreatePoll}
+        onClose={() => setShowCreatePoll(false)}
+        onCreatePoll={handleCreatePoll}
+      />
 
       <ConfirmDialog
         isOpen={alertModal.isOpen}

@@ -19,6 +19,10 @@ import {
   PhoneIncoming,
   PhoneOutgoing,
   PhoneMissed,
+  Forward,
+  Pin,
+  Info,
+  Timer,
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { useCall } from "../../context/CallContext";
@@ -26,6 +30,8 @@ import { getMediaUrl } from "../../config/endpoints";
 import VoiceNoteBubble from "./VoiceNoteBubble";
 import MediaPreviewModal from "./MediaPreviewModal";
 import DeleteModal from "./DeleteModal";
+import LinkPreviewCard from "./LinkPreviewCard";
+import PollBubble from "./PollBubble";
 
 const formatBytes = (bytes) => {
   if (!bytes || bytes === 0) return "0 B";
@@ -37,6 +43,12 @@ const formatBytes = (bytes) => {
 
 const QUICK_REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
 
+const extractFirstUrl = (text) => {
+  if (!text) return null;
+  const match = text.match(/(https?:\/\/[^\s]+)/i);
+  return match ? match[0] : null;
+};
+
 const MessageBubble = ({
   message,
   onEdit,
@@ -45,6 +57,11 @@ const MessageBubble = ({
   onScrollToMessage,
   onReact,
   onStar,
+  onPin,
+  onForward,
+  onVotePoll,
+  onShowMessageInfo,
+  isPinned = false,
   searchKeyword = "",
   isGroup = false,
 }) => {
@@ -58,6 +75,60 @@ const MessageBubble = ({
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [previewMediaUrl, setPreviewMediaUrl] = useState(null);
   const [imageError, setImageError] = useState(false);
+
+  // Swipe-to-reply touch gesture state
+  const [touchOffsetX, setTouchOffsetX] = useState(0);
+  const [isSwiping, setIsSwiping] = useState(false);
+  const touchStartRef = useRef({ x: 0, y: 0 });
+  const hasVibratedRef = useRef(false);
+
+  const handleTouchStart = (e) => {
+    const t = e.touches[0];
+    touchStartRef.current = { x: t.clientX, y: t.clientY };
+    hasVibratedRef.current = false;
+    setIsSwiping(false);
+  };
+
+  const handleTouchMove = (e) => {
+    if (!touchStartRef.current.x) return;
+    const t = e.touches[0];
+    const diffX = t.clientX - touchStartRef.current.x;
+    const diffY = t.clientY - touchStartRef.current.y;
+
+    // Only respond to horizontal rightward drag
+    if (diffX > 10 && Math.abs(diffX) > Math.abs(diffY)) {
+      setIsSwiping(true);
+      const clamped = Math.min(diffX * 0.45, 65);
+      setTouchOffsetX(clamped);
+
+      if (clamped >= 40 && !hasVibratedRef.current) {
+        hasVibratedRef.current = true;
+        if (typeof navigator !== "undefined" && navigator.vibrate) {
+          try {
+            navigator.vibrate(20);
+          } catch {
+            // ignore if permissions or browser blocks
+          }
+        }
+      }
+    }
+  };
+
+  const handleTouchEnd = () => {
+    if (touchOffsetX >= 40) {
+      onReply?.(message);
+      if (typeof navigator !== "undefined" && navigator.vibrate && !hasVibratedRef.current) {
+        try {
+          navigator.vibrate(20);
+        } catch {
+          // ignore
+        }
+      }
+    }
+    setTouchOffsetX(0);
+    setIsSwiping(false);
+    touchStartRef.current = { x: 0, y: 0 };
+  };
 
   const isMine = message.sender?._id === user._id;
 
@@ -308,7 +379,37 @@ const MessageBubble = ({
           </div>
         )}
 
+        {/* Swipe-to-Reply Left Spring Indicator */}
+        {touchOffsetX > 0 && (
+          <div
+            className="self-center shrink-0 pr-1 pointer-events-none transition-opacity"
+            style={{
+              opacity: Math.min(touchOffsetX / 35, 1),
+              transform: `scale(${Math.min(touchOffsetX / 35, 1)})`,
+            }}
+          >
+            <div
+              className={`flex h-7 w-7 items-center justify-center rounded-full shadow-md transition-all ${
+                touchOffsetX >= 40
+                  ? "bg-[var(--accent-primary)] text-white scale-110"
+                  : "bg-[var(--bg-card)] text-[var(--text-muted)] border border-[var(--border-color)]"
+              }`}
+            >
+              <Reply size={13} />
+            </div>
+          </div>
+        )}
+
         <div
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+          style={{
+            transform: `translateX(${touchOffsetX}px)`,
+            transition: isSwiping
+              ? "none"
+              : "transform 0.22s cubic-bezier(0.2, 0.9, 0.3, 1)",
+          }}
           className={`group relative max-w-[85%] sm:max-w-[75%] md:max-w-[65%] ${
             isMine ? "items-end" : "items-start"
           } flex flex-col`}
@@ -331,6 +432,8 @@ const MessageBubble = ({
           {/* Bubble Box */}
           <div
             className={`relative px-4 py-3 shadow-xs transition ${
+              isPinned ? "ring-2 ring-amber-500/40" : ""
+            } ${
               isMine
                 ? "rounded-[20px] rounded-tr-sm bg-[var(--bubble-out-bg)] border border-[var(--bubble-out-border)] text-[var(--bubble-out-text)]"
                 : "rounded-[20px] rounded-tl-sm bg-[var(--bubble-in-bg)] border border-[var(--bubble-in-border)] text-[var(--bubble-in-text)]"
@@ -358,6 +461,22 @@ const MessageBubble = ({
                     {emoji}
                   </button>
                 ))}
+              </div>
+            )}
+
+            {/* Forwarded Tag */}
+            {message.isForwarded && (
+              <div className="flex items-center gap-1 text-[10px] italic text-[var(--text-muted)] mb-1.5 opacity-80">
+                <Forward size={11} className="text-[var(--text-muted)]" />
+                <span>Forwarded</span>
+              </div>
+            )}
+
+            {/* Pinned Tag */}
+            {isPinned && (
+              <div className="flex items-center gap-1 text-[10px] font-semibold text-amber-500 mb-1.5 opacity-90">
+                <Pin size={10} className="fill-amber-500 text-amber-500" />
+                <span>Pinned message</span>
               </div>
             )}
 
@@ -483,16 +602,36 @@ const MessageBubble = ({
                   </div>
                 )}
 
+                {/* POLL */}
+                {message.messageType === "poll" && (
+                  <PollBubble
+                    message={message}
+                    currentUserId={user._id}
+                    onVote={onVotePoll}
+                    isMine={isMine}
+                  />
+                )}
+
                 {/* TEXT / CAPTION */}
                 {message.text && message.messageType !== "image" && (
-                  <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">
-                    {renderMessageContent(message.text)}
-                  </p>
+                  <div>
+                    <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">
+                      {renderMessageContent(message.text)}
+                    </p>
+                    {extractFirstUrl(message.text) && (
+                      <LinkPreviewCard url={extractFirstUrl(message.text)} />
+                    )}
+                  </div>
                 )}
                 {message.text && message.messageType === "image" && message.text !== rawMedia && (
-                  <p className="whitespace-pre-wrap break-words text-sm leading-relaxed pt-1">
-                    {renderMessageContent(message.text)}
-                  </p>
+                  <div className="pt-1">
+                    <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">
+                      {renderMessageContent(message.text)}
+                    </p>
+                    {extractFirstUrl(message.text) && (
+                      <LinkPreviewCard url={extractFirstUrl(message.text)} />
+                    )}
+                  </div>
                 )}
               </div>
             ) : (
@@ -564,6 +703,42 @@ const MessageBubble = ({
                     >
                       <Reply size={12} />
                       Reply
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onForward?.(message);
+                        setShowMenu(false);
+                      }}
+                      className="flex w-full items-center gap-2 rounded-xl px-2.5 py-1.5 text-left text-[11px] font-medium text-[var(--text-primary)] transition hover:bg-[var(--bg-subtle)]"
+                    >
+                      <Forward size={12} />
+                      Forward
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onShowMessageInfo?.(message);
+                        setShowMenu(false);
+                      }}
+                      className="flex w-full items-center gap-2 rounded-xl px-2.5 py-1.5 text-left text-[11px] font-medium text-[var(--text-primary)] transition hover:bg-[var(--bg-subtle)]"
+                    >
+                      <Info size={12} />
+                      Message info
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onPin?.(message);
+                        setShowMenu(false);
+                      }}
+                      className="flex w-full items-center gap-2 rounded-xl px-2.5 py-1.5 text-left text-[11px] font-medium text-[var(--text-primary)] transition hover:bg-[var(--bg-subtle)]"
+                    >
+                      <Pin size={12} className={isPinned ? "fill-amber-500 text-amber-500" : ""} />
+                      {isPinned ? "Unpin message" : "Pin message"}
                     </button>
 
                     {message.text && (
@@ -640,6 +815,23 @@ const MessageBubble = ({
 
           {/* Status Indicator & Receipts Footer */}
           <div className="mt-0.5 flex items-center gap-1 px-1 text-[10px] text-[var(--text-muted)]">
+            {isPinned && (
+              <Pin
+                size={11}
+                className="text-amber-500 fill-amber-500 shrink-0"
+                title="Pinned message"
+              />
+            )}
+
+            {message.expiresAt && !isDeleted && (
+              <span
+                className="inline-flex items-center gap-0.5 text-[9px] text-[var(--accent-text)] opacity-85 shrink-0"
+                title={`Disappearing message (expires ${new Date(message.expiresAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})`}
+              >
+                <Timer size={10} className="shrink-0" />
+              </span>
+            )}
+
             {isStarred && (
               <Star
                 size={11}

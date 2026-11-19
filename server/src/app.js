@@ -9,6 +9,7 @@ import messageRoutes from "./routes/message.routes.js";
 import userRoutes from "./routes/user.routes.js";
 import uploadRoutes from "./routes/upload.routes.js";
 import callRoutes from "./routes/call.routes.js";
+import utilsRoutes from "./routes/utils.routes.js";
 import { getCorsOrigin } from "./config/origins.js";
 import { notFound, errorHandler } from "./middleware/errorMiddleware.js";
 
@@ -42,6 +43,7 @@ app.use("/api/messages", messageRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/upload", uploadRoutes);
 app.use("/api/calls", callRoutes);
+app.use("/api/utils", utilsRoutes);
 
 // Error handling middleware
 app.use(notFound);

@@ -20,6 +20,11 @@ const MessageList = ({
   onReply,
   inChatSearchOpen = false,
   onCloseInChatSearch,
+  onPinMessage,
+  onForwardMessage,
+  onShowMessageInfo,
+  pinnedMessages = [],
+  onMessagesLoaded,
 }) => {
   const { user } = useAuth();
   const { socket } = useSocket();
@@ -67,6 +72,7 @@ const MessageList = ({
         const response = await api.get(`/messages/${conversation._id}`);
         const loadedMessages = response.data;
         setMessages(loadedMessages);
+        onMessagesLoaded?.(loadedMessages);
 
         requestAnimationFrame(() => {
           messagesEndRef.current?.scrollIntoView({ behavior: "auto" });
@@ -123,21 +129,32 @@ const MessageList = ({
       if (isMine) {
         playSentSound();
       } else {
-        playReceivedSound();
-        showDesktopNotification({
-          title: conversation.isGroup
-            ? conversation.groupName
-            : message.sender?.name || "New message",
-          body:
-            message.text ||
-            (message.messageType === "image"
-              ? "📷 Photo"
-              : message.messageType === "video"
-              ? "🎥 Video"
-              : message.messageType === "audio"
-              ? "🎤 Voice note"
-              : "📎 Attachment"),
-        });
+        const isMuted = Boolean(
+          user?.mutedConversations?.some(
+            (m) =>
+              (m.conversationId?._id || m.conversationId)?.toString() ===
+                conversation?._id?.toString() &&
+              (!m.mutedUntil || new Date(m.mutedUntil) > new Date()),
+          ),
+        );
+
+        if (!isMuted) {
+          playReceivedSound();
+          showDesktopNotification({
+            title: conversation.isGroup
+              ? conversation.groupName
+              : message.sender?.name || "New message",
+            body:
+              message.text ||
+              (message.messageType === "image"
+                ? "📷 Photo"
+                : message.messageType === "video"
+                ? "🎥 Video"
+                : message.messageType === "audio"
+                ? "🎤 Voice note"
+                : "📎 Attachment"),
+          });
+        }
       }
 
       if (isNearBottomRef.current || isMine) {
@@ -161,7 +178,14 @@ const MessageList = ({
     return () => {
       socket.off("newMessage", handleNewMessage);
     };
-  }, [socket, conversation?._id, conversation?.isGroup, conversation?.groupName, user._id]);
+  }, [
+    socket,
+    conversation?._id,
+    conversation?.isGroup,
+    conversation?.groupName,
+    user._id,
+    user?.mutedConversations,
+  ]);
 
   // Real-time message edits
   useEffect(() => {
@@ -320,6 +344,23 @@ const MessageList = ({
     };
   }, [socket, conversation?._id]);
 
+  // Real-time Poll Updates
+  useEffect(() => {
+    if (!socket || !conversation?._id) return;
+
+    const handlePollUpdated = ({ conversationId, messageId, poll }) => {
+      if (conversationId !== conversation._id) return;
+      setMessages((prev) =>
+        prev.map((m) => (m._id === messageId ? { ...m, poll } : m)),
+      );
+    };
+
+    socket.on("pollUpdated", handlePollUpdated);
+    return () => {
+      socket.off("pollUpdated", handlePollUpdated);
+    };
+  }, [socket, conversation?._id]);
+
   // Real-time typing indicator
   useEffect(() => {
     if (!socket || !conversation?._id) return;
@@ -355,6 +396,16 @@ const MessageList = ({
       conversationId: conversation._id,
       messageId,
       emoji,
+    });
+  };
+
+  const handleVotePoll = (messageId, optionId) => {
+    if (!socket || !conversation?._id) return;
+
+    socket.emit("votePoll", {
+      conversationId: conversation._id,
+      messageId,
+      optionId,
     });
   };
 
@@ -547,6 +598,13 @@ const MessageList = ({
             onScrollToMessage={scrollToMessage}
             onReact={handleReact}
             onStar={handleStarMessage}
+            onPin={onPinMessage}
+            onForward={onForwardMessage}
+            onVotePoll={handleVotePoll}
+            onShowMessageInfo={onShowMessageInfo}
+            isPinned={pinnedMessages.some(
+              (pm) => (pm?._id || pm)?.toString() === message._id?.toString(),
+            )}
             searchKeyword={searchQuery}
             isGroup={Boolean(conversation?.isGroup)}
           />

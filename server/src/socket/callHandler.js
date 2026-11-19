@@ -121,9 +121,22 @@ export const setupCallHandlers = (io, socket) => {
         return socket.emit("call:error", { message: "Invalid call recipient" });
       }
 
-      const receiver = await User.findById(receiverId).select("name email avatar isOnline");
+      const callerUser = await User.findById(currentUserId).select("blockedUsers");
+      if (callerUser?.blockedUsers?.some((bId) => bId.toString() === receiverId)) {
+        return socket.emit("call:error", {
+          message: "You have blocked this contact. Unblock to make calls.",
+        });
+      }
+
+      const receiver = await User.findById(receiverId).select("name email avatar isOnline blockedUsers");
       if (!receiver) {
         return socket.emit("call:error", { message: "User not found" });
+      }
+
+      if (receiver.blockedUsers?.some((bId) => bId.toString() === currentUserId)) {
+        return socket.emit("call:error", {
+          message: "Unable to connect. You have been blocked by this user.",
+        });
       }
 
       // Check online status via socket presence

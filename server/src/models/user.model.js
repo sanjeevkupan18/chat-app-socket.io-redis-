@@ -44,6 +44,73 @@ const userSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+
+    statusEmoji: {
+      type: String,
+      default: "",
+      maxlength: 10,
+    },
+
+    statusText: {
+      type: String,
+      default: "",
+      maxlength: 100,
+    },
+
+    about: {
+      type: String,
+      default: "Hey there! I am using Chat App.",
+      maxlength: 150,
+    },
+
+    blockedUsers: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+      },
+    ],
+
+    mutedConversations: [
+      {
+        conversationId: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "Conversation",
+        },
+        mutedUntil: {
+          type: Date,
+          default: null,
+        },
+      },
+    ],
+
+    sessions: [
+      {
+        sessionId: {
+          type: String,
+          required: true,
+        },
+        device: {
+          type: String,
+          default: "Desktop",
+        },
+        browser: {
+          type: String,
+          default: "Browser",
+        },
+        os: {
+          type: String,
+          default: "Unknown OS",
+        },
+        ip: {
+          type: String,
+          default: "127.0.0.1",
+        },
+        lastActive: {
+          type: Date,
+          default: Date.now,
+        },
+      },
+    ],
   },
   {
     timestamps: true,

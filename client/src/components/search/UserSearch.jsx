@@ -4,7 +4,7 @@ import api from "../../services/api";
 import useDebounce from "../../hooks/useDebounce";
 import { getMediaUrl } from "../../config/endpoints";
 
-const UserSearch = ({ onSelectUser }) => {
+const UserSearch = ({ onSelectUser, onOpenCommandPalette }) => {
   const [search, setSearch] = useState("");
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -65,11 +65,22 @@ const UserSearch = ({ onSelectUser }) => {
             if (users.length) setShowResults(true);
           }}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search"
-          className="w-full rounded-full border border-[var(--border-color)] bg-[var(--bg-subtle)] py-2.5 pl-4 pr-10 text-xs font-medium text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none transition focus:border-[var(--accent-primary)] focus:bg-[var(--bg-card)] shadow-xs"
+          placeholder="Search people..."
+          className="w-full rounded-full border border-[var(--border-color)] bg-[var(--bg-subtle)] py-2.5 pl-4 pr-16 text-xs font-medium text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none transition focus:border-[var(--accent-primary)] focus:bg-[var(--bg-card)] shadow-xs"
         />
 
         <div className="absolute right-3.5 flex items-center gap-1.5 text-[var(--text-muted)]">
+          {!search && onOpenCommandPalette && (
+            <button
+              type="button"
+              onClick={onOpenCommandPalette}
+              className="hidden sm:inline-flex items-center gap-0.5 rounded-md border border-[var(--border-color)] bg-[var(--bg-card)] px-1.5 py-0.5 text-[10px] font-bold text-[var(--text-muted)] hover:text-[var(--text-primary)] transition"
+              title="Open Command Palette (Cmd+K)"
+            >
+              ⌘K
+            </button>
+          )}
+
           {loading ? (
             <Loader2 size={15} className="animate-spin text-[var(--accent-primary)]" />
           ) : search ? (
@@ -131,9 +142,16 @@ const UserSearch = ({ onSelectUser }) => {
                 </div>
 
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-xs font-semibold text-[var(--text-primary)] dark:text-white">
-                    {u.name}
-                  </p>
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <p className="truncate text-xs font-semibold text-[var(--text-primary)] dark:text-white">
+                      {u.name}
+                    </p>
+                    {u.statusEmoji && (
+                      <span className="text-xs" title={u.statusText}>
+                        {u.statusEmoji}
+                      </span>
+                    )}
+                  </div>
                   <p className="truncate text-[10px] text-[var(--text-secondary)] dark:text-slate-300">
                     {u.email}
                   </p>

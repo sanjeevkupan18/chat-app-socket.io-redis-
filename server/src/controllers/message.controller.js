@@ -16,14 +16,21 @@ export const getMessages = async (req, res) => {
       });
     }
 
+    const now = new Date();
     const messages = await Message.find({
       conversation: conversationId,
       deletedFor: { $ne: req.user._id },
+      $or: [
+        { expiresAt: null },
+        { expiresAt: { $exists: false } },
+        { expiresAt: { $gt: now } },
+      ],
     })
       .populate("sender", "name email avatar")
       .populate("receiver", "name email avatar")
       .populate("reactions.user", "name avatar")
       .populate("mentions", "name email avatar")
+      .populate("poll.options.votes", "name avatar")
       .populate({
         path: "replyTo",
         select: "text messageType mediaUrl fileName sender isDeleted",
@@ -57,6 +64,7 @@ export const toggleStarMessage = async (req, res) => {
       .populate("receiver", "name email avatar")
       .populate("reactions.user", "name avatar")
       .populate("mentions", "name email avatar")
+      .populate("poll.options.votes", "name avatar")
       .populate({
         path: "replyTo",
         select: "text messageType mediaUrl fileName sender isDeleted",
@@ -168,5 +176,87 @@ export const getConversationMedia = async (req, res) => {
   } catch (error) {
     console.error("Get conversation media error:", error);
     res.status(500).json({ message: "Unable to fetch conversation media" });
+  }
+};
+
+/*
+ * GET MESSAGE INFO (READ BY DETAILS)
+ */
+export const getMessageInfo = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const message = await Message.findById(id)
+      .populate("sender", "name email avatar statusEmoji statusText")
+      .populate("readBy", "name email avatar statusEmoji statusText isOnline lastSeen")
+      .populate("readReceipts.user", "name email avatar statusEmoji statusText isOnline lastSeen");
+
+    if (!message) {
+      return res.status(404).json({ message: "Message not found" });
+    }
+
+    const conversation = await Conversation.findOne({
+      _id: message.conversation,
+      participants: req.user._id,
+    }).populate("participants", "name email avatar statusEmoji statusText isOnline lastSeen");
+
+    if (!conversation) {
+      return res.status(403).json({ message: "You are not a participant in this conversation" });
+    }
+
+    // Build read receipt map
+    const readReceiptMap = new Map();
+    (message.readReceipts || []).forEach((receipt) => {
+      if (receipt.user?._id) {
+        readReceiptMap.set(receipt.user._id.toString(), receipt.readAt);
+      }
+    });
+
+    const senderIdStr = (message.sender?._id || message.sender)?.toString();
+
+    const readUsers = [];
+    const remainingUsers = [];
+
+    const readUserIds = new Set(
+      (message.readBy || []).map((u) => (u._id || u).toString()),
+    );
+
+    for (const participant of conversation.participants || []) {
+      const pIdStr = participant._id.toString();
+      if (pIdStr === senderIdStr) {
+        continue;
+      }
+
+      if (readUserIds.has(pIdStr)) {
+        readUsers.push({
+          user: participant,
+          readAt: readReceiptMap.get(pIdStr) || message.readAt || message.updatedAt || message.createdAt,
+        });
+      } else {
+        remainingUsers.push({
+          user: participant,
+        });
+      }
+    }
+
+    res.json({
+      message: {
+        _id: message._id,
+        text: message.text,
+        messageType: message.messageType,
+        mediaUrl: message.mediaUrl,
+        fileName: message.fileName,
+        createdAt: message.createdAt,
+        sender: message.sender,
+        status: message.status,
+      },
+      isGroup: conversation.isGroup,
+      totalParticipants: Math.max(0, (conversation.participants || []).length - 1),
+      readBy: readUsers,
+      deliveredTo: remainingUsers,
+    });
+  } catch (error) {
+    console.error("Get message info error:", error);
+    res.status(500).json({ message: "Unable to fetch message info" });
   }
 };

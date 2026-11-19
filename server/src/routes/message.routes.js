@@ -5,11 +5,13 @@ import {
   toggleStarMessage,
   getStarredMessages,
   getConversationMedia,
+  getMessageInfo,
 } from "../controllers/message.controller.js";
 
 const router = express.Router();
 
 router.get("/starred", protect, getStarredMessages);
+router.get("/:id/info", protect, getMessageInfo);
 router.put("/:id/star", protect, toggleStarMessage);
 router.get("/:conversationId/media", protect, getConversationMedia);
 router.get("/:conversationId", protect, getMessages);

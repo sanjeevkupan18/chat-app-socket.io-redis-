@@ -14,6 +14,7 @@ import {
   Sun,
   Moon,
   Palette,
+  BellOff,
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { useTheme } from "../../context/ThemeContext";
@@ -36,6 +37,7 @@ const Sidebar = ({
   onCloseMobileSidebar,
   activeNav = "chat",
   setActiveNav,
+  onOpenCommandPalette,
 }) => {
   const { user, updateProfile, logout } = useAuth();
   const { isDark, toggleTheme, palette, setPalette, palettes } = useTheme();
@@ -345,7 +347,10 @@ const Sidebar = ({
 
       {/* 3. Search Bar */}
       <div className="shrink-0">
-        <UserSearch onSelectUser={onSelectUser} />
+        <UserSearch
+          onSelectUser={onSelectUser}
+          onOpenCommandPalette={onOpenCommandPalette}
+        />
       </div>
 
       {/* 4. Section Header: "Last chats" + (+) + (⋮) */}
@@ -429,6 +434,14 @@ const Sidebar = ({
           const isSelected = selectedConversation?._id === conversation._id;
           const conversationTitle = isGroup ? conversation.groupName : otherUser?.name;
           const isPinned = Boolean(conversation.isPinned);
+          const isMuted = Boolean(
+            user?.mutedConversations?.some(
+              (m) =>
+                (m.conversationId?._id || m.conversationId)?.toString() ===
+                  conversation._id?.toString() &&
+                (!m.mutedUntil || new Date(m.mutedUntil) > new Date()),
+            ),
+          );
 
           return (
             <div
@@ -489,15 +502,25 @@ const Sidebar = ({
                 {/* Info Text */}
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center justify-between gap-1">
-                    <p
-                      className={`truncate text-xs font-semibold ${
-                        isSelected
-                          ? "text-[var(--accent-text)] dark:text-[var(--accent-text)] font-bold"
-                          : "text-[var(--text-primary)] dark:text-white"
-                      }`}
-                    >
-                      {conversationTitle}
-                    </p>
+                    <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                      <p
+                        className={`truncate text-xs font-semibold ${
+                          isSelected
+                            ? "text-[var(--accent-text)] dark:text-[var(--accent-text)] font-bold"
+                            : "text-[var(--text-primary)] dark:text-white"
+                        }`}
+                      >
+                        {conversationTitle}
+                      </p>
+                      {!conversation.isGroup && otherUser?.statusEmoji && (
+                        <span
+                          className="text-[11px] shrink-0"
+                          title={otherUser.statusText || otherUser.statusEmoji}
+                        >
+                          {otherUser.statusEmoji}
+                        </span>
+                      )}
+                    </div>
 
                     <span
                       className={`text-[10px] shrink-0 font-medium ${
@@ -521,7 +544,14 @@ const Sidebar = ({
                       {renderMessagePreview(conversation)}
                     </p>
 
-                    <div className="flex items-center gap-1 shrink-0">
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {isMuted && (
+                        <BellOff
+                          size={12}
+                          className="text-[var(--text-muted)] shrink-0"
+                          title="Muted notifications"
+                        />
+                      )}
                       {conversation.unreadCount > 0 && !isSelected && (
                         <span className="inline-flex min-w-4 items-center justify-center rounded-full bg-emerald-500 px-1.5 py-0.2 text-[9px] font-bold text-white shadow-xs">
                           {conversation.unreadCount > 99
